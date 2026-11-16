@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { Fact, FactSearchHit } from '../src/repositories/facts.js'
+import type { Fact, FactHealth, FactSearchHit } from '../src/repositories/facts.js'
 import type { Neighbourhood } from '../src/repositories/graph.js'
 import type { Overview, SearchResults } from '../src/store.js'
-import { createTestHarness, type TestHarness } from './support.js'
+import { createTestHarness, resourceText, type TestHarness } from './support.js'
 
 let harness: TestHarness
 
@@ -314,6 +314,219 @@ describe('graph links and neighbourhood', () => {
     }
     expect(detail.links).toEqual([])
     expect(detail.fact.taskId).toBeNull()
+  })
+})
+
+describe('fact_confirm', () => {
+  it('re-stamps a fact without editing its content', async () => {
+    const fact = await addFact()
+    const first = (await harness.ok('fact_confirm', {
+      ref: fact.ref,
+      note: 're-probed live',
+    })) as { ref: string; confirmedAt: string; note: string | null; confirmations: number }
+    expect(first.ref).toBe('F1')
+    expect(first.note).toBe('re-probed live')
+    expect(first.confirmations).toBe(1)
+    expect(first.confirmedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+
+    await harness.ok('fact_confirm', { ref: fact.ref })
+    const detail = (await harness.ok('fact_get', { ref: fact.ref })) as {
+      fact: Fact
+      confirmations: { confirmedAt: string; note: string | null }[]
+      lastConfirmedAt: string | null
+    }
+    expect(detail.confirmations).toHaveLength(2)
+    expect(detail.confirmations.at(-1)?.note).toBeNull()
+    expect(detail.lastConfirmedAt).toBe(detail.confirmations.at(-1)?.confirmedAt)
+    expect(detail.fact.title).toBe(fact.title)
+    expect(detail.fact.createdAt).toBe(fact.createdAt)
+  })
+
+  it('validates the ref and the note', async () => {
+    expect(await harness.err('fact_confirm', { ref: 'F99' })).toBe(
+      'not-found: fact "F99" does not exist',
+    )
+    const fact = await addFact()
+    expect(await harness.err('fact_confirm', { ref: fact.ref, note: 'n'.repeat(201) })).toContain(
+      'note must not exceed 200 characters',
+    )
+  })
+})
+
+describe('fact_health', () => {
+  it('flags orphans, duplicate pairs, unused entities and stale facts', async () => {
+    const orphan = await addFact({ title: 'lonely observation', body: 'this fact touches nothing' })
+    const linked = await addFact({
+      title: 'wired observation',
+      body: 'this fact is linked to a component',
+      links: [{ rel: 'affects', dst: 'entity:storage' }],
+    })
+    await addFact({ title: 'checkpoint stalls under load', body: 'wal checkpoint blocks writers' })
+    await addFact({ title: 'checkpoint stalls under load', body: 'wal checkpoint blocks writers' })
+    await harness.ok('fact_link', {
+      src: `fact:${linked.ref}`,
+      rel: 'about',
+      dst: 'entity:temp-node',
+    })
+    await harness.ok('fact_unlink', {
+      src: `fact:${linked.ref}`,
+      rel: 'about',
+      dst: 'entity:temp-node',
+    })
+    harness.db.exec(
+      `UPDATE facts SET created_at = '2020-01-01T00:00:00.000Z' WHERE ref = '${orphan.ref}'`,
+    )
+
+    const health = (await harness.ok('fact_health')) as FactHealth
+    expect(health.orphanFacts.map((entry) => entry.ref)).toContain(orphan.ref)
+    expect(health.orphanFacts.map((entry) => entry.ref)).not.toContain(linked.ref)
+    const duplicateRefs = health.duplicatePairs.flatMap((pair) => [pair.a, pair.b])
+    expect(duplicateRefs).toContain('F3')
+    expect(duplicateRefs).toContain('F4')
+    expect(health.unusedEntities).toContain('temp-node')
+    expect(health.unusedEntities).not.toContain('storage')
+    expect(health.staleFacts.map((entry) => entry.ref)).toEqual([orphan.ref])
+    expect(health.staleFacts[0]?.daysSince).toBeGreaterThan(90)
+    expect(health.counts.orphanFacts).toBe(3)
+    expect(health.counts.duplicatePairs).toBeGreaterThanOrEqual(1)
+    expect(health.counts.unusedEntities).toBe(1)
+    expect(health.counts.staleFacts).toBe(1)
+  })
+
+  it('drops a fact from staleness once it is re-confirmed', async () => {
+    const fact = await addFact({ title: 'old quirk', body: 'recorded long ago' })
+    harness.db.exec(
+      `UPDATE facts SET created_at = '2020-01-01T00:00:00.000Z' WHERE ref = '${fact.ref}'`,
+    )
+    const before = (await harness.ok('fact_health')) as FactHealth
+    expect(before.staleFacts.map((entry) => entry.ref)).toContain(fact.ref)
+    await harness.ok('fact_confirm', { ref: fact.ref })
+    const after = (await harness.ok('fact_health')) as FactHealth
+    expect(after.staleFacts.map((entry) => entry.ref)).not.toContain(fact.ref)
+    expect(after.counts.staleFacts).toBe(0)
+  })
+
+  it('surfaces health counts in the overview', async () => {
+    const snapshot = (await harness.ok('overview')) as Overview
+    expect(snapshot.facts.health).toEqual({
+      orphanFacts: 0,
+      duplicatePairs: 0,
+      unusedEntities: 0,
+      staleFacts: 0,
+    })
+  })
+})
+
+describe('entity_merge', () => {
+  it('moves every link to the surviving entity and deletes the source', async () => {
+    await harness.ok('task_create', { id: 'T0', title: 'storage work' })
+    await harness.ok('decision_append', {
+      title: 'use wal',
+      body: 'wal mode chosen',
+      category: 'architecture',
+    })
+    const fact = await addFact({ links: [{ rel: 'affects', dst: 'entity:storage' }] })
+    await harness.ok('fact_link', { src: 'decision:D1', rel: 'about', dst: 'entity:storage' })
+    await harness.ok('fact_link', { src: 'task:T0', rel: 'implements', dst: 'entity:storage' })
+    const other = await addFact({
+      title: 'second component fact',
+      body: 'about the other component',
+      links: [{ rel: 'affects', dst: 'entity:storage-layer' }],
+    })
+
+    const merged = (await harness.ok('entity_merge', {
+      from: 'entity:storage',
+      to: 'entity:storage-layer',
+    })) as { from: string; to: string; relinked: number }
+    expect(merged).toEqual({
+      from: 'entity:storage',
+      to: 'entity:storage-layer',
+      relinked: 3,
+    })
+
+    const detail = (await harness.ok('fact_get', { ref: fact.ref })) as {
+      links: { dst: string }[]
+    }
+    expect(detail.links.map((link) => link.dst)).toEqual(['entity:storage-layer'])
+
+    const hood = (await harness.ok('fact_neighbourhood', {
+      start: 'entity:storage-layer',
+      depth: 1,
+    })) as Neighbourhood
+    expect(hood.nodes.map((node) => node.ref).sort()).toEqual(
+      [
+        `fact:${fact.ref}`,
+        `fact:${other.ref}`,
+        'decision:D1',
+        'entity:storage-layer',
+        'task:T0',
+      ].sort(),
+    )
+
+    expect(
+      await harness.err('entity_merge', {
+        from: 'entity:storage',
+        to: 'entity:storage-layer',
+      }),
+    ).toContain('entity "storage" does not exist')
+    expect(
+      await harness.err('entity_merge', { from: `fact:${fact.ref}`, to: 'entity:storage-layer' }),
+    ).toContain('two entity refs')
+    expect(
+      await harness.err('entity_merge', {
+        from: 'entity:storage-layer',
+        to: 'entity:storage-layer',
+      }),
+    ).toContain('into itself')
+    expect(
+      await harness.err('entity_merge', { from: 'entity:storage-layer', to: 'entity:nope' }),
+    ).toContain('entity "nope" does not exist')
+  })
+})
+
+describe('fact resource and pagination', () => {
+  it('exposes facts through the resource template', async () => {
+    const fact = await addFact({ title: 'resource-worthy', body: 'readable through the template' })
+    const templates = await harness.client.listResourceTemplates()
+    expect(templates.resourceTemplates.map((template) => template.uriTemplate)).toContain(
+      'harness://facts/{ref}',
+    )
+    const list = await harness.client.listResources()
+    expect(list.resources.map((resource) => resource.uri)).toContain(`harness://facts/${fact.ref}`)
+    const payload = (await resourceText(harness, `harness://facts/${fact.ref}`)) as {
+      fact: Fact
+      links: unknown[]
+      confirmations: unknown[]
+      lastConfirmedAt: string | null
+    }
+    expect(payload.fact.ref).toBe(fact.ref)
+    expect(payload.fact.title).toBe('resource-worthy')
+    const missing = await harness.readResource('harness://facts/F99').then(
+      () => null,
+      (error: unknown) => error,
+    )
+    expect(missing).toBeInstanceOf(Error)
+  })
+
+  it('pages through facts with limit and offset', async () => {
+    await addFact({ title: 'page alpha', body: 'first page entry' })
+    await addFact({ title: 'page beta', body: 'second page entry' })
+    await addFact({ title: 'page gamma', body: 'third page entry' })
+    const first = (await harness.ok('fact_search', { limit: 2, offset: 0 })) as {
+      facts: Fact[]
+    }
+    expect(first.facts.map((fact) => fact.ref)).toEqual(['F3', 'F2'])
+    const second = (await harness.ok('fact_search', { limit: 2, offset: 1 })) as {
+      facts: Fact[]
+    }
+    expect(second.facts.map((fact) => fact.ref)).toEqual(['F2', 'F1'])
+    const ranked = (await harness.ok('fact_search', {
+      query: 'page',
+      limit: 1,
+      offset: 1,
+    })) as { facts: Fact[] }
+    expect(ranked.facts).toHaveLength(1)
+    expect(await harness.err('fact_search', { offset: -1 })).toContain('Too small')
   })
 })
 

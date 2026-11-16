@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { withTransaction } from '../db/database.js'
 import { HarnessError } from '../errors.js'
 import {
   ENTITY_NAME_PATTERN,
@@ -150,6 +151,55 @@ export class GraphRepository {
       )
       .run(src.kind, src.id, relation, dst.kind, dst.id)
     return { removed: Number(result.changes) }
+  }
+
+  mergeEntities(fromRaw: string, toRaw: string): { from: string; to: string; relinked: number } {
+    const from = parseNodeRef(fromRaw)
+    const to = parseNodeRef(toRaw)
+    if (from.kind !== 'entity' || to.kind !== 'entity') {
+      throw new HarnessError('invalid', 'entity merge requires two entity refs (entity:name)')
+    }
+    if (from.id === to.id) {
+      throw new HarnessError('invalid', 'cannot merge an entity into itself')
+    }
+    if (!this.entityExists(from.id)) {
+      throw new HarnessError('not-found', `entity "${from.id}" does not exist`)
+    }
+    if (!this.entityExists(to.id)) {
+      throw new HarnessError('not-found', `entity "${to.id}" does not exist`)
+    }
+    return withTransaction(this.db, () => {
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM links
+           WHERE (src_kind = 'entity' AND src_id = ?) OR (dst_kind = 'entity' AND dst_id = ?)`,
+        )
+        .all(from.id, from.id) as unknown as LinkRow[]
+      for (const row of rows) {
+        const srcId = row.src_kind === 'entity' && row.src_id === from.id ? to.id : row.src_id
+        const dstId = row.dst_kind === 'entity' && row.dst_id === from.id ? to.id : row.dst_id
+        if (`${row.src_kind}:${srcId}` !== `${row.dst_kind}:${dstId}`) {
+          this.db
+            .prepare(
+              `INSERT OR IGNORE INTO links (src_kind, src_id, rel, dst_kind, dst_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+            )
+            .run(row.src_kind, srcId, row.rel, row.dst_kind, dstId, row.created_at)
+        }
+        this.db
+          .prepare(
+            `DELETE FROM links
+             WHERE src_kind = ? AND src_id = ? AND rel = ? AND dst_kind = ? AND dst_id = ?`,
+          )
+          .run(row.src_kind, row.src_id, row.rel, row.dst_kind, row.dst_id)
+      }
+      this.db.prepare('DELETE FROM entities WHERE name = ?').run(from.id)
+      return { from: nodeRefString(from), to: nodeRefString(to), relinked: rows.length }
+    })
+  }
+
+  private entityExists(name: string): boolean {
+    return this.db.prepare('SELECT 1 FROM entities WHERE name = ?').get(name) !== undefined
   }
 
   linksFor(nodeRaw: string): Link[] {

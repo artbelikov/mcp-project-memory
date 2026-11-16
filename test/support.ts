@@ -10,6 +10,7 @@ import { buildHarnessServer } from '../src/mcp/server.js'
 import { createHarnessStore, type HarnessStore } from '../src/store.js'
 
 export type TestHarness = {
+  db: DatabaseSync
   store: HarnessStore
   client: Client
   call: (name: string, args?: Record<string, unknown>) => Promise<CallToolResult>
@@ -34,6 +35,7 @@ export async function createTestHarness(): Promise<TestHarness> {
     client.callTool({ name, arguments: args }) as unknown as Promise<CallToolResult>
 
   return {
+    db,
     store,
     client,
     call,

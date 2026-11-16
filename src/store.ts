@@ -1,7 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { HarnessError } from './errors.js'
 import { type Decision, DecisionsRepository } from './repositories/decisions.js'
-import { type FactSearchHit, type FactSummary, FactsRepository } from './repositories/facts.js'
+import {
+  type FactHealthCounts,
+  type FactSearchHit,
+  type FactSummary,
+  FactsRepository,
+} from './repositories/facts.js'
 import { GraphRepository } from './repositories/graph.js'
 import { type Handoff, HandoffRepository } from './repositories/handoff.js'
 import { PlanRepository, type PlanSectionSummary } from './repositories/plan.js'
@@ -16,6 +21,7 @@ import {
 import { MAX_SEARCH_QUERY_LENGTH, truncate } from './util.js'
 
 export type HarnessStore = {
+  db: DatabaseSync
   tasks: TasksRepository
   decisions: DecisionsRepository
   sessionLog: SessionLogRepository
@@ -28,6 +34,7 @@ export type HarnessStore = {
 export function createHarnessStore(db: DatabaseSync): HarnessStore {
   const graph = new GraphRepository(db)
   return {
+    db,
     tasks: new TasksRepository(db),
     decisions: new DecisionsRepository(db),
     sessionLog: new SessionLogRepository(db),
@@ -50,7 +57,7 @@ export type Overview = {
   recentDecisions: Pick<Decision, 'ref' | 'title'>[]
   recentSessionLog: SessionLogEntry[]
   plan: { sections: number; updatedAt: string | null }
-  facts: FactSummary
+  facts: FactSummary & { health: FactHealthCounts }
 }
 
 export function buildOverview(store: HarnessStore): Overview {
@@ -82,7 +89,7 @@ export function buildOverview(store: HarnessStore): Overview {
       .map((decision) => ({ ref: decision.ref, title: decision.title })),
     recentSessionLog: store.sessionLog.list({ limit: 3 }),
     plan: { sections: sections.length, updatedAt: planUpdatedAt },
-    facts: store.facts.summary(),
+    facts: { ...store.facts.summary(), health: store.facts.health().counts },
   }
 }
 

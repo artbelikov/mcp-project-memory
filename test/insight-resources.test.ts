@@ -40,6 +40,11 @@ const TOOL_NAMES = [
   'fact_link',
   'fact_unlink',
   'fact_neighbourhood',
+  'fact_confirm',
+  'fact_health',
+  'entity_merge',
+  'harness_export',
+  'harness_import',
 ] as const
 
 describe('tool catalogue', () => {
@@ -61,6 +66,8 @@ describe('tool catalogue', () => {
       'fact_search',
       'fact_get',
       'fact_neighbourhood',
+      'fact_health',
+      'harness_export',
     ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint).toBe(true)
     }
@@ -71,6 +78,9 @@ describe('tool catalogue', () => {
       'handoff_set',
       'fact_add',
       'fact_link',
+      'fact_confirm',
+      'entity_merge',
+      'harness_import',
     ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint).toBeUndefined()
     }

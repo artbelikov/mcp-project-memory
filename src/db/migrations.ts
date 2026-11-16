@@ -124,7 +124,32 @@ const KNOWLEDGE: Migration = {
   ],
 }
 
-export const MIGRATIONS: readonly Migration[] = [BASELINE, KNOWLEDGE]
+const CONFIRMATIONS: Migration = {
+  id: 3,
+  statements: [
+    `CREATE TABLE fact_confirmations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fact_ref TEXT NOT NULL REFERENCES facts (ref) ON DELETE CASCADE,
+      confirmed_at TEXT NOT NULL,
+      note TEXT
+    )`,
+    'CREATE INDEX idx_fact_confirmations_ref ON fact_confirmations (fact_ref, confirmed_at)',
+    `CREATE TRIGGER facts_ins_supersedes_format BEFORE INSERT ON facts
+     WHEN new.supersedes IS NOT NULL
+       AND (new.supersedes NOT GLOB 'F*' OR new.supersedes GLOB '*[^F0-9]*')
+     BEGIN
+       SELECT RAISE(ABORT, 'facts.supersedes must be an F-ref like F12');
+     END`,
+    `CREATE TRIGGER facts_upd_supersedes_format BEFORE UPDATE ON facts
+     WHEN new.supersedes IS NOT NULL
+       AND (new.supersedes NOT GLOB 'F*' OR new.supersedes GLOB '*[^F0-9]*')
+     BEGIN
+       SELECT RAISE(ABORT, 'facts.supersedes must be an F-ref like F12');
+     END`,
+  ],
+}
+
+export const MIGRATIONS: readonly Migration[] = [BASELINE, KNOWLEDGE, CONFIRMATIONS]
 
 export function migrate(db: DatabaseSync): void {
   db.exec(

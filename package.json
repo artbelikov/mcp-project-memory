@@ -1,9 +1,9 @@
 {
   "name": "mcp-project-memory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Universal AI task and plan execution harness: MCP server over a SQLite store (tasks, dependencies, decisions, session log, handoff, plan) plus the work-planning skill",
+  "description": "Universal AI task and plan execution harness: MCP server over a SQLite store (tasks, dependencies, decisions, session log, handoff, plan, knowledge base) plus the work-planning skill",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -32,6 +32,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.7",
     "@types/node": "22.20.5",
+    "fast-check": "^4.10.2",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "5.1.0"

@@ -111,7 +111,8 @@ deadline backwards; every quality practice must name the phase that pays for it.
 ## Phase 4 — Cross-session tracking (the store IS the tracker)
 
 1. **Start of every session**: `overview` (dashboard) + `handoff_get` + `task_next` —
-   read before writing any code. `task_next` names the work or tells you it's blocked
+   read before writing any code (the `session-start` MCP prompt renders this ritual).
+   `task_next` names the work or tells you it's blocked
    and waiting on what. Then `fact_search` (and `fact_neighbourhood` on the component
    you are about to touch) — the answer to your next question may already be recorded.
 2. **During**: flip task status at every state change (`task_update`); record durable
@@ -153,6 +154,13 @@ one small call at the moment of discovery — not batch-written at the end.
 6. **Retrieve by walking, not grepping.** `fact_search` is ranked and stem-tolerant
    ("polling" matches "polls"); `fact_neighbourhood` from `entity:<component>` answers
    "what do we know about this, and what touches it?" before you change it.
+7. **Re-confirm what you re-verify.** When a probe, search or code read re-validates an
+   existing fact, `fact_confirm` it (with a short `note`) instead of writing a twin —
+   confirmation history is what staleness detection runs on, and facts stay append-only.
+8. **Clean the base when it gets noisy.** `fact_health` lists orphan facts, mutual
+   duplicate-title pairs, unused entities and facts not confirmed for 90+ days (counts also
+   ride in `overview`): supersede duplicates, link or `entity_merge` split aliases, re-confirm
+   or retire stale facts.
 
 ## Phase 5 — Reiteration passes (run after the plan exists)
 

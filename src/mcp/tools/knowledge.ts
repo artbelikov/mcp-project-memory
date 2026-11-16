@@ -51,15 +51,47 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
     {
       title: 'Get fact',
       description:
-        'Fetch one fact by its exact F-number, including its body, provenance, validity window, what it supersedes, and every typed link touching it.',
+        'Fetch one fact by its exact F-number, including its body, provenance, validity window, what it supersedes, every typed link touching it, and its confirmation history (all `fact_confirm` re-verifications with `lastConfirmedAt`).',
       inputSchema: { ref: z.string() },
       annotations: { readOnlyHint: true },
     },
-    guard((args: { ref: string }) =>
-      asToolResult({
-        fact: store.facts.get(args.ref),
-        links: store.graph.linksFor(`fact:${args.ref}`),
-      }),
+    guard((args: { ref: string }) => asToolResult(store.facts.detail(args.ref))),
+  )
+
+  server.registerTool(
+    'fact_confirm',
+    {
+      title: 'Re-confirm fact',
+      description:
+        'Re-stamp a fact as still true when you re-observe it, without editing its content (facts stay append-only). Appends a confirmation with today’s timestamp and an optional `note` (≤200 chars); `fact_get` and the knowledge health report use the latest confirmation to decide staleness — a fact confirmed recently is never stale. Confirm a fact whenever a search or a live probe re-validates it.',
+      inputSchema: { ref: z.string(), note: z.string().optional() },
+    },
+    guard((args: { ref: string; note?: string }) =>
+      asToolResult(store.facts.confirm(args.ref, args.note)),
+    ),
+  )
+
+  server.registerTool(
+    'fact_health',
+    {
+      title: 'Knowledge health',
+      description:
+        'Report knowledge-base hygiene: `orphanFacts` (nothing links to them and they touch no task or supersede chain), `duplicatePairs` (facts whose titles match each other both ways — supersede instead of keeping both; scanned across the 100 newest facts, max 50 pairs), `unusedEntities` (entities with no edges), and `staleFacts` (not re-confirmed for 90+ days — re-confirm or supersede them). Lists are capped at 100 samples; counts are exact except duplicates. Run it when the base feels noisy or before a big recording session.',
+      annotations: { readOnlyHint: true },
+    },
+    guard(() => asToolResult(store.facts.health())),
+  )
+
+  server.registerTool(
+    'entity_merge',
+    {
+      title: 'Merge entities',
+      description:
+        'Merge two entity nodes (`entity:from` → `entity:to`): every link pointing at or from `from` is moved to `to` (duplicates collapse, self-loops drop), then `from` is deleted. Both entities must already exist. Use it to fold aliases (`storage-layer` vs `storage layer`) that auto-creation split apart. The merge is atomic.',
+      inputSchema: { from: z.string(), to: z.string() },
+    },
+    guard((args: { from: string; to: string }) =>
+      asToolResult(store.graph.mergeEntities(args.from, args.to)),
     ),
   )
 
@@ -68,7 +100,7 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
     {
       title: 'Search knowledge',
       description:
-        'Ranked full-text search over the knowledge base (FTS5 + bm25, porter-stemmed, so "polling" matches "polls"). Tolerates paraphrase far better than substring search. Results carry a snippet and a rank; user-stated and high-confidence facts rank above uncertain agent inferences; superseded and expired facts are hidden unless `includeSuperseded` is true. Filter by `kind`, `origin`, `taskId`, or `entity` (facts linked to that component/file/technology). Omit `query` to list recent facts. Consult this BEFORE touching a component or repeating an investigation — the answer may already be recorded.',
+        'Ranked full-text search over the knowledge base (FTS5 + bm25, porter-stemmed, so "polling" matches "polls"). Tolerates paraphrase far better than substring search. Results carry a snippet and a rank; user-stated and high-confidence facts rank above uncertain agent inferences; superseded and expired facts are hidden unless `includeSuperseded` is true. Filter by `kind`, `origin`, `taskId`, or `entity` (facts linked to that component/file/technology). Paginate with `limit` + `offset` (offset defaults to 0). Omit `query` to list recent facts. Consult this BEFORE touching a component or repeating an investigation — the answer may already be recorded.',
       inputSchema: {
         query: z.string().optional(),
         kind: z.enum(FACT_KINDS).optional(),
@@ -77,6 +109,7 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
         entity: z.string().optional(),
         includeSuperseded: z.boolean().optional(),
         limit: z.number().int().min(1).max(50).optional(),
+        offset: z.number().int().min(0).optional(),
       },
       annotations: { readOnlyHint: true },
     },
@@ -89,6 +122,7 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
         entity?: string
         includeSuperseded?: boolean
         limit?: number
+        offset?: number
       }) => asToolResult({ facts: store.facts.search(args) }),
     ),
   )

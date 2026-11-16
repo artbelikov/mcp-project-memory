@@ -1,4 +1,5 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
+import { withTransaction, withUniqueRetry } from '../db/database.js'
 import { HarnessError } from '../errors.js'
 import { DECISION_REF_PATTERN, nextNumberIn, nowIso, searchTerms } from '../util.js'
 
@@ -30,11 +31,13 @@ type DecisionRow = {
 }
 
 export class DecisionsRepository {
+  private readonly db: DatabaseSync
   private readonly insertDecision: StatementSync
   private readonly selectAll: StatementSync
   private readonly selectTaskId: StatementSync
 
   constructor(db: DatabaseSync) {
+    this.db = db
     this.insertDecision = db.prepare(
       'INSERT INTO decisions (ref, title, body, category, task_id, supersedes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
@@ -59,19 +62,23 @@ export class DecisionsRepository {
       throw new HarnessError('not-found', `decision "${input.supersedes}" does not exist`)
     }
     const at = nowIso()
-    const ref = this.allocateRef()
-    this.insertDecision.run(
-      ref,
-      title,
-      body,
-      category,
-      input.taskId ?? null,
-      input.supersedes ?? null,
-      at,
+    return withUniqueRetry(() =>
+      withTransaction(this.db, () => {
+        const ref = this.allocateRef()
+        this.insertDecision.run(
+          ref,
+          title,
+          body,
+          category,
+          input.taskId ?? null,
+          input.supersedes ?? null,
+          at,
+        )
+        const created = this.findRef(ref)
+        if (created === null) throw new HarnessError('invalid', 'decision persistence failed')
+        return created
+      }),
     )
-    const created = this.findRef(ref)
-    if (created === null) throw new HarnessError('invalid', 'decision persistence failed')
-    return created
   }
 
   list(filter: DecisionFilter = {}): Decision[] {

@@ -96,6 +96,32 @@ export function registerHarnessResources(server: McpServer, store: HarnessStore)
   )
 
   server.registerResource(
+    'fact',
+    new ResourceTemplate('harness://facts/{ref}', {
+      list: () => ({
+        resources: store.facts.list().map((fact) => ({
+          uri: `harness://facts/${fact.ref}`,
+          name: fact.title,
+          mimeType: 'application/json',
+        })),
+      }),
+    }),
+    {
+      title: 'Fact',
+      description: 'One knowledge fact in full: fields, typed links, and confirmation history.',
+      mimeType: 'application/json',
+    },
+    (uri, variables) => {
+      const ref = String(variables.ref ?? '')
+      try {
+        return asResource(uri.toString(), 'application/json', store.facts.detail(ref))
+      } catch (error) {
+        throw wrapError(error)
+      }
+    },
+  )
+
+  server.registerResource(
     'session-log',
     'harness://session-log',
     {

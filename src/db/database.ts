@@ -37,3 +37,20 @@ export function withTransaction<T>(db: DatabaseSync, body: () => T): T {
     throw error
   }
 }
+
+export function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message)
+}
+
+export function withUniqueRetry<T>(run: () => T, attempts = 3): T {
+  let lastError: unknown
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return run()
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error
+      lastError = error
+    }
+  }
+  throw lastError
+}

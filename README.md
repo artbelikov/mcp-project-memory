@@ -65,29 +65,38 @@ The named volume persists state between sessions; point it at a host directory i
 | Handoff   | `handoff_get` / `handoff_set`                         | Named sections of the Current-handoff block; whole-body upsert, empty body deletes                                                                                        |
 | Plan      | `plan_list` / `plan_get` / `plan_put` / `plan_delete` | Sectioned plan; `plan_put` inserts behind an `after` anchor on create                                                                                                     |
 |           | `plan_export`                                         | Full markdown rendering of the plan                                                                                                                                       |
-| Meta      | `overview`                                            | The one-call dashboard (counts, sets, next resolution, handoff, latest decisions/log, plan size, knowledge-base size by kind)                                             |
+| Meta      | `overview`                                            | The one-call dashboard (counts, sets, next resolution, handoff, latest decisions/log, plan size, knowledge size by kind + health counts)                                  |
 |           | `search`                                              | Substring search across tasks/decisions/plan **plus ranked FTS5 search over facts**, with snippets                                                                        |
 | Knowledge | `fact_add`                                            | Append-only F-numbered `gotcha`/`api-fact`/`insight`/`note`; `origin` (user/agent), `confidence`, validity window, `supersedes`, inline `links`; warns on near-duplicates |
-|           | `fact_get(ref)`                                       | One fact + every typed link touching it                                                                                                                                   |
-|           | `fact_search`                                         | Ranked FTS5/bm25 (porter-stemmed, paraphrase-tolerant), provenance-weighted; filters kind/origin/task/entity; hides superseded+expired                                    |
+|           | `fact_get(ref)`                                       | One fact + every typed link touching it + full confirmation history (`lastConfirmedAt`)                                                                                   |
+|           | `fact_confirm(ref, note?)`                            | Re-stamp a fact as still true when re-observed — appends a confirmation, never edits content                                                                              |
+|           | `fact_search`                                         | Ranked FTS5/bm25 (porter-stemmed, paraphrase-tolerant), provenance-weighted; filters kind/origin/task/entity; `limit`+`offset` paging; hides superseded+expired           |
 |           | `fact_link` / `fact_unlink`                           | Typed relations between `fact`/`decision`/`task`/`plan`/`entity` nodes; entities auto-created; idempotent                                                                 |
 |           | `fact_neighbourhood`                                  | Walk the knowledge graph from a node (depth 1–5, both/out/in) for impact questions                                                                                        |
+|           | `fact_health`                                         | Hygiene report: orphan facts, duplicate-title pairs, unused entities, facts stale for 90+ days (counts also in `overview`)                                                |
+|           | `entity_merge(from, to)`                              | Fold an alias entity into another: every link moves atomically, duplicates collapse, the source is deleted                                                                |
+| Porting   | `harness_export`                                      | Read-only full-store dump (format tag, schemaVersion, every raw row) for backups and cross-project moves                                                                  |
+|           | `harness_import(data, mode)`                          | Restore a dump: `replace` (wipe first) or `merge` (skip conflicts); schema-version-checked and applied in one transaction                                                 |
 
-Resources: `harness://overview`, `harness://tasks`, `harness://tasks/{id}`, `harness://handoff`, `harness://decisions`, `harness://facts`, `harness://session-log`, `harness://plan` (markdown).
+Resources: `harness://overview`, `harness://tasks`, `harness://tasks/{id}`, `harness://handoff`, `harness://decisions`, `harness://facts`, `harness://facts/{ref}`, `harness://session-log`, `harness://plan` (markdown).
+
+Prompts: `session-start` (the read-before-write ritual: `overview` → `handoff_get` → `task_next` → `fact_search`, with an optional focus area) and `plan-from-requirements` (harvest → probe → plan → tasks → tracker, per the skill).
 
 ## Knowledge base (facts + graph)
 
 The knowledge base is a property graph **inside the same SQLite file** — no vector DB, no graph DB, no new dependencies (FTS5 and recursive CTEs are built into `node:sqlite`).
 
 - **Facts vs decisions**: `decision_append` records _binding rules/choices_ (rationale + rejected alternative). `fact_add` records _observations_ — gotchas, measured API behavior, insights, notes — and links them to the things they are about. Don't duplicate a decision as a fact; link them (`fact:F1 —recorded-as→ decision:D5`).
-- **Provenance + staleness**: every fact carries `origin` (user-stated ranks above agent-inferred), `confidence` (0..1), an optional validity window, and `supersedes`. Search hides superseded and expired facts by default, so the base never confidently serves obsolete advice. Facts are append-only with immutable F-refs; retire by superseding, never by editing.
-- **Graph**: typed links (`affects`, `discovered-in`, `uses`, `about`, `implements`…) connect facts, decisions, tasks, plan sections, and entities (components/files/technologies, auto-created). `fact_neighbourhood` walks it — start at `entity:storage-layer` to see everything known about that component. Links to a task/plan section, and a fact's `taskId`, are cleaned up automatically when that record is deleted.
+- **Provenance + staleness**: every fact carries `origin` (user-stated ranks above agent-inferred), `confidence` (0..1), an optional validity window, and `supersedes`. Search hides superseded and expired facts by default, so the base never confidently serves obsolete advice. Facts are append-only with immutable F-refs; retire by superseding, never by editing. When a fact is re-observed, `fact_confirm` re-stamps it instead — confirmation history feeds staleness detection.
+- **Graph**: typed links (`affects`, `discovered-in`, `uses`, `about`, `implements`…) connect facts, decisions, tasks, plan sections, and entities (components/files/technologies, auto-created). `fact_neighbourhood` walks it — start at `entity:storage-layer` to see everything known about that component. Links to a task/plan section, and a fact's `taskId`, are cleaned up automatically when that record is deleted. When auto-creation splits an alias apart (`storage` vs `storage-layer`), `entity_merge` folds the nodes back together.
 - **Retrieval**: `fact_search` uses FTS5 + bm25 with porter stemming, so "polling" matches "polls" and paraphrase recall works where substring search returns nothing. Consult it before touching a component or repeating an investigation.
+- **Hygiene**: `fact_health` reports orphan facts, mutual duplicate-title candidates, unused entities and facts not re-confirmed for 90+ days; the counts ride along in every `overview`. Clean as you go — supersede duplicates, link or merge orphans, re-confirm what you re-verified.
+- **Portability**: `harness_export` dumps every row of the store (schema-versioned); `harness_import` restores it with `replace` or merges it with `merge`, all in one transaction. Use it for backups, for seeding a second project, or for diffing two harnesses.
 
 ## The session protocol this implements
 
-1. **Start**: `overview` (dashboard) + `handoff_get` + `task_next` — read before writing any code; `fact_search` what is already known about the area you are about to touch.
-2. **During**: flip task status at every state change; record binding rules with `decision_append` and observations/gotchas with `fact_add` (linked to the relevant task/entity) the moment they are discovered; keep the plan true with `plan_put`.
+1. **Start**: `overview` (dashboard) + `handoff_get` + `task_next` — read before writing any code; `fact_search` what is already known about the area you are about to touch. The server ships this as the `session-start` MCP prompt, so clients that render prompts start on the ritual automatically.
+2. **During**: flip task status at every state change; record binding rules with `decision_append` and observations/gotchas with `fact_add` (linked to the relevant task/entity) the moment they are discovered; re-confirm re-observed facts with `fact_confirm`; keep the plan true with `plan_put`.
 3. **End**: `session_log_add` (one line), refresh `handoff_set` sections, flip the task status — the delta is recorded even if the session dies right after.
 
 ## The skill
@@ -101,6 +110,18 @@ pnpm skill:check            # verifies sync without writing (exit 1 = out of syn
 
 Target directory can be overridden with `--dest <dir>` or `KILO_SKILLS_DIR`. Checks and installs are content-verified (byte compare + stale-file detection): a successful install guarantees the destination equals this folder.
 
+## Releasing
+
+Versions live in `package.json` and `src/config.ts` (`SERVER_VERSION`) — bump both. The changelog is `CHANGELOG.md` (Keep a Changelog format).
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+git tag v0.2.0 && git push origin main v0.2.0
+docker build -t mcp-project-memory:0.2.0 -t mcp-project-memory:latest .
+```
+
+Never push a schema change without a migration entry: `test/migrations.test.ts` upgrades a populated v1 fixture, so an applied-but-untested migration fails the suite. Tool/resource/prompt contract changes show up as a failed `test/contracts` snapshot — review the diff and re-record it deliberately (`pnpm test -- -u`), because consumers are AI agents that code against that surface.
+
 ## Moving this folder out
 
 The package is standalone: its own `package.json` (private, pnpm lockfile), tsconfig (strict, NodeNext, `noEmit` typecheck + build config), Biome config, vitest suite, Dockerfile. It has **no imports from the surrounding repo** — move the folder anywhere and the gates still run:
@@ -111,4 +132,4 @@ pnpm install && pnpm lint && pnpm typecheck && pnpm test && pnpm build
 
 One deviation from the parent repo's style: `exactOptionalPropertyTypes` stays off here — the MCP SDK's zod-derived handler args are typed `T | undefined` per optional key, and mirroring that inside every repository input type adds ceremony with no behavior change. Everything else (`strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) is untouched.
 
-Design notes: append-only invariants live in the API surface (no mutation tools for logs, immutable D-refs and F-refs); statuses and fact kinds/origins are CHECK-constrained in SQLite; the plan/handoff use fractional/ordering columns so insertions between sections stay O(1); facts are indexed by an FTS5 external-content table (porter tokenizer) kept in sync by triggers, and the knowledge graph is traversed with recursive CTEs — all inside the one SQLite file, zero native deps; entities are never garbage-collected (unlinking removes the edge, not the node); the dev workflow runs the exact same server through `tsx` (`pnpm dev` → stdio watch mode) with `DATA_DIR` pointing wherever the consuming repo wants.
+Design notes: append-only invariants live in the API surface (no mutation tools for logs, immutable D-refs and F-refs); statuses and fact kinds/origins are CHECK-constrained in SQLite, and `facts.supersedes` format is enforced by a schema-level trigger (migration 3); ref allocation runs inside `BEGIN IMMEDIATE` with a unique-violation retry, so two writers cannot mint the same ref; the plan/handoff use fractional/ordering columns so insertions between sections stay O(1); facts are indexed by an FTS5 external-content table (porter tokenizer) kept in sync by triggers, and the knowledge graph is traversed with recursive CTEs — all inside the one SQLite file, zero native deps; entities are never garbage-collected (unlinking removes the edge, not the node — `entity_merge` folds aliases); the dev workflow runs the exact same server through `tsx` (`pnpm dev` → stdio watch mode) with `DATA_DIR` pointing wherever the consuming repo wants.

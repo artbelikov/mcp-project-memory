@@ -25,6 +25,12 @@
       "formatter": {
         "enabled": false
       }
+    },
+    {
+      "includes": ["test/contracts/harness-surface.json"],
+      "formatter": {
+        "enabled": false
+      }
     }
   ],
   "linter": {
