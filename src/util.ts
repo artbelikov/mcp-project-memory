@@ -1,9 +1,15 @@
+import { HarnessError } from './errors.js'
+
 export const TASK_REF_PATTERN = /^T(\d{1,4})$/
 export const DECISION_REF_PATTERN = /^D(\d{1,4})$/
+export const FACT_REF_PATTERN = /^F(\d{1,6})$/
 export const TASK_ID_PATTERN = /^(T\d{1,4}|[a-z][a-z0-9-]{0,47})$/
 export const HANDOFF_SECTION_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9 ./-]{0,47}$/
 export const PLAN_SECTION_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
 export const LOG_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+export const ENTITY_NAME_PATTERN = /^[a-z0-9][a-z0-9 ._/-]{0,119}$/
+export const LINK_REL_PATTERN = /^[a-z][a-z0-9-]{0,39}$/
+export const NODE_REF_PATTERN = /^(fact|decision|task|plan|entity):(.+)$/
 
 export const MAX_TITLE_LENGTH = 200
 export const MAX_SPEC_LENGTH = 20_000
@@ -16,6 +22,12 @@ export const MAX_SECTION_ID_LENGTH = 64
 export const MAX_SECTION_TITLE_LENGTH = 120
 export const MAX_SECTION_CONTENT_LENGTH = 50_000
 export const MAX_SEARCH_QUERY_LENGTH = 120
+export const MAX_FACT_TITLE_LENGTH = 160
+export const MAX_FACT_BODY_LENGTH = 8_000
+export const MAX_ENTITY_NAME_LENGTH = 120
+export const MAX_LINK_REL_LENGTH = 40
+export const MAX_NEIGHBOURHOOD_DEPTH = 5
+export const MAX_NEIGHBOURHOOD_NODES = 200
 
 export function nowIso(): string {
   return new Date().toISOString()
@@ -62,4 +74,16 @@ export function searchTerms(query: string): string[] {
     .toLowerCase()
     .split(/\s+/)
     .filter((term) => term.length > 0)
+}
+
+export function ftsMatchQuery(query: string): string {
+  const terms = query
+    .trim()
+    .split(/\s+/)
+    .filter((term) => /[a-z0-9]/i.test(term))
+    .map((term) => `"${term.replace(/"/g, '""')}"`)
+  if (terms.length === 0) {
+    throw new HarnessError('invalid', 'query must contain at least one searchable term')
+  }
+  return terms.join(' OR ')
 }

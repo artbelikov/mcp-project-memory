@@ -34,6 +34,12 @@ const TOOL_NAMES = [
   'plan_export',
   'overview',
   'search',
+  'fact_add',
+  'fact_get',
+  'fact_search',
+  'fact_link',
+  'fact_unlink',
+  'fact_neighbourhood',
 ] as const
 
 describe('tool catalogue', () => {
@@ -46,10 +52,26 @@ describe('tool catalogue', () => {
   it('marks read-only tools and leaves mutators unmarked', async () => {
     const { tools } = await harness.client.listTools()
     const byName = new Map(tools.map((tool) => [tool.name, tool]))
-    for (const name of ['overview', 'task_next', 'task_list', 'plan_export', 'search']) {
+    for (const name of [
+      'overview',
+      'task_next',
+      'task_list',
+      'plan_export',
+      'search',
+      'fact_search',
+      'fact_get',
+      'fact_neighbourhood',
+    ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint).toBe(true)
     }
-    for (const name of ['task_create', 'task_update', 'decision_append', 'handoff_set']) {
+    for (const name of [
+      'task_create',
+      'task_update',
+      'decision_append',
+      'handoff_set',
+      'fact_add',
+      'fact_link',
+    ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint).toBeUndefined()
     }
   })
@@ -65,6 +87,7 @@ describe('resources', () => {
         'harness://tasks',
         'harness://handoff',
         'harness://decisions',
+        'harness://facts',
         'harness://session-log',
         'harness://plan',
       ].sort(),
@@ -76,6 +99,7 @@ describe('resources', () => {
       updatedAt: null,
     })
     expect(await resourceText(harness, 'harness://decisions')).toEqual({ decisions: [] })
+    expect(await resourceText(harness, 'harness://facts')).toEqual({ facts: [] })
     expect(await resourceText(harness, 'harness://session-log')).toEqual({ entries: [] })
     expect(await resourceMarkdown(harness, 'harness://plan')).toBe('# Plan\n\nNo sections yet.\n')
   })

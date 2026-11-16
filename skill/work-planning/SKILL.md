@@ -7,17 +7,18 @@ description: >
   probes, produce a plan and a session-ready task breakdown with dependencies, and keep
   cross-session progress tracking. Everything persists through the project-memory MCP
   server (plan sections, task board with dependency graph, decisions log, handoff block,
-  session log) — the skill is the method, the MCP server is the state; together they make
-  any repo AI-session-ready. Use when starting a new project/feature, when the user asks
-  for a plan, roadmap, or decomposition into AI sessions, when requirements need a
-  validation or reiteration pass, or when tracking work across sessions.
+  session log, and a knowledge base of facts linked into a project graph) — the skill is
+  the method, the MCP server is the state; together they make any repo AI-session-ready.
+  Use when starting a new project/feature, when the user asks for a plan, roadmap, or
+  decomposition into AI sessions, when requirements need a validation or reiteration
+  pass, or when tracking work across sessions.
 ---
 
 # Work planning & task management
 
 Method for turning a raw task dump into a verified, executable, trackable project. Follow
 the phases in order; every phase ends with an artifact written into the **project-memory
-MCP store** (via its tools: `plan_*`, `task_*`, `decision_append`, `handoff_set`,
+MCP store** (via its tools: `plan_*`, `task_*`, `decision_append`, `fact_*`, `handoff_set`,
 `session_log_add`, `overview`, `search`) — not into chat. Principles: **evidence over
 assumptions** (probe live systems, don't trust docs blindly), **artifacts over
 conversation** (future sessions read the store, not this chat), **scope discipline**
@@ -55,7 +56,9 @@ file artifacts (PLAN.md / TASKS.md / PROGRESS.md) and say so explicitly.
 2. **Ground-truth probe the live system** where safe: read-only endpoints, health checks,
    response-shape sampling, CORS/headers, auth flows. Write a `verified-facts` plan
    section (fact → how verified → date). When a live probe contradicts the docs, the
-   probe wins — write the conflict down explicitly.
+   probe wins — write the conflict down explicitly. Record each probed behavior as a
+   `fact_add` (kind `api-fact`, origin `user` when you observed it live) linked to the
+   system entity, so it is retrievable by paraphrase in later sessions.
 3. If the deliverable is a UI clone of a reference product: obtain real screenshots,
    write a `visual-spec.md` (layout zones, color tokens, component anatomy, explicit
    "do NOT copy" anti-list), and reference it from the plan. Never spec a UI from prose
@@ -109,9 +112,12 @@ deadline backwards; every quality practice must name the phase that pays for it.
 
 1. **Start of every session**: `overview` (dashboard) + `handoff_get` + `task_next` —
    read before writing any code. `task_next` names the work or tells you it's blocked
-   and waiting on what.
+   and waiting on what. Then `fact_search` (and `fact_neighbourhood` on the component
+   you are about to touch) — the answer to your next question may already be recorded.
 2. **During**: flip task status at every state change (`task_update`); record durable
-   facts as they are discovered (`decision_append`); keep the plan true (`plan_put`).
+   knowledge the moment it is discovered — binding rules/choices via `decision_append`,
+   observations/gotchas/API behaviors via `fact_add` **with links** to the task and the
+   entity they concern; keep the plan true (`plan_put`).
 3. **End**: `session_log_add` (one condensed line), refresh `handoff_set` sections
    (`last-completed`, `next-up`, and `blockers`/`follow-ups` when relevant), flip the
    task status. The delta is recorded even if the session dies right after.
@@ -121,6 +127,32 @@ deadline backwards; every quality practice must name the phase that pays for it.
    ending. A `SESSION-PROMPT.md` is optional; if kept, it must be **self-locating**
    (never names the current task; points at the store; stops-and-reports when nothing is
    `todo`; scope growth → decision; re-run variant line for resuming a failed session).
+
+## Knowledge base (facts + project graph)
+
+The store keeps a knowledge base alongside the plan and board: append-only **facts**
+(full-text searchable) wired into a **graph** of typed links. It is populated over time,
+one small call at the moment of discovery — not batch-written at the end.
+
+1. **Route knowledge correctly.** Binding rules and choices (with rationale + rejected
+   alternative) → `decision_append` (D-refs). Observations, quirks, measured API
+   behavior, insights → `fact_add` (F-refs, kind `gotcha|api-fact|insight|note`). Never
+   duplicate a decision as a fact — link them instead (`fact:F1 —recorded-as→ decision:D5`).
+2. **Link at write time.** Pass `links` to `fact_add` so the fact is connected immediately:
+   `{rel:"affects", dst:"entity:storage-layer"}`, `{rel:"discovered-in", dst:"task:T3"}`.
+   Entities (components, files, technologies) are auto-created. An unlinked fact is hard
+   to find again; a linked one surfaces from the component it concerns.
+3. **Mark provenance and certainty.** `origin:"user"` for human-stated knowledge (ranks
+   higher), `origin:"agent"` for your own inferences; lower `confidence` for uncertain
+   guesses. This keeps inferred noise from outranking stated truth.
+4. **Retire, never rewrite.** When a fact stops being true, `fact_add` a corrected fact
+   with `supersedes:"F<n>"` (or bound it with `validTo`). Search hides superseded and
+   expired facts by default. Facts and decisions are append-only with immutable refs.
+5. **Check before duplicating.** `fact_add` returns `similar` existing facts — read them
+   and supersede rather than recording the same quirk twice.
+6. **Retrieve by walking, not grepping.** `fact_search` is ranked and stem-tolerant
+   ("polling" matches "polls"); `fact_neighbourhood` from `entity:<component>` answers
+   "what do we know about this, and what touches it?" before you change it.
 
 ## Phase 5 — Reiteration passes (run after the plan exists)
 
@@ -185,12 +217,18 @@ it is part of the definition of done, not an afterthought.
 - Hooks/commitlint/dead-code tooling on Day 1 of a tight deadline.
 - Writing plan/task/tracking state into chat or one-off files when the harness store is
   connected — sessions after you won't find it.
+- Discovering a gotcha or quirk and leaving it only in chat (or only in your head) instead
+  of a linked `fact_add` — the next session will rediscover it the hard way.
+- Duplicating a binding decision as a fact, or recording the same quirk twice instead of
+  superseding; letting stale facts stand unretired so search serves obsolete advice.
+- Hand-authoring a "project graph" of code structure — derive it (tree-sitter/LSP) or
+  delegate it; the knowledge graph here links knowledge to entities, it is not a code index.
 - "Minimal UI" that grows features because they were easy — scope freeze means freeze.
 
 ## Pairing note
 
 The skill and the **project-memory MCP server** ship together: this document is the
 _process_, the server is the _single source of truth_ for tasks, plan, decisions,
-handoff, and session log, so no session can corrupt them through big rewrites. When a
-D-number, R-id, or task ID is referenced in any session, the store is the lookup, not
-the chat transcript.
+handoff, session log, and the knowledge base (facts + project graph), so no session can
+corrupt them through big rewrites. When a D-number, F-number, R-id, or task ID is
+referenced in any session, the store is the lookup, not the chat transcript.

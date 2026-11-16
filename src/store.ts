@@ -1,6 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { HarnessError } from './errors.js'
 import { type Decision, DecisionsRepository } from './repositories/decisions.js'
+import { type FactSearchHit, type FactSummary, FactsRepository } from './repositories/facts.js'
+import { GraphRepository } from './repositories/graph.js'
 import { type Handoff, HandoffRepository } from './repositories/handoff.js'
 import { PlanRepository, type PlanSectionSummary } from './repositories/plan.js'
 import { type SessionLogEntry, SessionLogRepository } from './repositories/session-log.js'
@@ -19,15 +21,20 @@ export type HarnessStore = {
   sessionLog: SessionLogRepository
   handoff: HandoffRepository
   plan: PlanRepository
+  facts: FactsRepository
+  graph: GraphRepository
 }
 
 export function createHarnessStore(db: DatabaseSync): HarnessStore {
+  const graph = new GraphRepository(db)
   return {
     tasks: new TasksRepository(db),
     decisions: new DecisionsRepository(db),
     sessionLog: new SessionLogRepository(db),
     handoff: new HandoffRepository(db),
     plan: new PlanRepository(db),
+    graph,
+    facts: new FactsRepository(db, graph),
   }
 }
 
@@ -43,6 +50,7 @@ export type Overview = {
   recentDecisions: Pick<Decision, 'ref' | 'title'>[]
   recentSessionLog: SessionLogEntry[]
   plan: { sections: number; updatedAt: string | null }
+  facts: FactSummary
 }
 
 export function buildOverview(store: HarnessStore): Overview {
@@ -74,6 +82,7 @@ export function buildOverview(store: HarnessStore): Overview {
       .map((decision) => ({ ref: decision.ref, title: decision.title })),
     recentSessionLog: store.sessionLog.list({ limit: 3 }),
     plan: { sections: sections.length, updatedAt: planUpdatedAt },
+    facts: store.facts.summary(),
   }
 }
 
@@ -82,6 +91,7 @@ export type SearchResults = {
   tasks: Pick<Task, 'id' | 'title' | 'status'>[]
   decisions: Pick<Decision, 'ref' | 'title' | 'category'>[]
   plan: { id: string; title: string; snippet: string }[]
+  facts: FactSearchHit[]
 }
 
 export const SEARCH_DEFAULT_LIMIT = 10
@@ -126,7 +136,8 @@ export function searchAll(
       title: summary.title,
       snippet: snippet(content, terms),
     }))
-  return { query, tasks, decisions, plan }
+  const facts = /[a-z0-9]/i.test(query) ? store.facts.search({ query, limit }) : []
+  return { query, tasks, decisions, plan, facts }
 }
 
 function snippet(content: string, terms: readonly string[]): string {

@@ -4,6 +4,7 @@ import type { HarnessStore } from '../store.js'
 import { registerHarnessResources } from './resources.js'
 import { registerHandoffTools } from './tools/handoff.js'
 import { registerInsightTools } from './tools/insight.js'
+import { registerKnowledgeTools } from './tools/knowledge.js'
 import { registerPlanTools } from './tools/plan.js'
 import { registerProgressTools } from './tools/progress.js'
 import { registerTaskTools } from './tools/tasks.js'
@@ -15,6 +16,7 @@ export function buildHarnessServer(store: HarnessStore): McpServer {
   registerHandoffTools(server, store)
   registerPlanTools(server, store)
   registerInsightTools(server, store)
+  registerKnowledgeTools(server, store)
   registerHarnessResources(server, store)
   return server
 }

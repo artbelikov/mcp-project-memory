@@ -59,7 +59,72 @@ const BASELINE: Migration = {
   ],
 }
 
-export const MIGRATIONS: readonly Migration[] = [BASELINE]
+const KNOWLEDGE: Migration = {
+  id: 2,
+  statements: [
+    `CREATE TABLE facts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ref TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK (kind IN ('gotcha', 'api-fact', 'insight', 'note')),
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      origin TEXT NOT NULL DEFAULT 'agent' CHECK (origin IN ('user', 'agent')),
+      confidence REAL NOT NULL DEFAULT 1 CHECK (confidence >= 0 AND confidence <= 1),
+      task_id TEXT,
+      supersedes TEXT,
+      valid_from TEXT,
+      valid_to TEXT,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX idx_facts_id ON facts (id DESC)',
+    'CREATE INDEX idx_facts_kind ON facts (kind)',
+    `CREATE VIRTUAL TABLE facts_fts USING fts5(
+      title, body, content='facts', content_rowid='id', tokenize='porter unicode61'
+    )`,
+    `CREATE TRIGGER facts_ai AFTER INSERT ON facts BEGIN
+      INSERT INTO facts_fts (rowid, title, body) VALUES (new.id, new.title, new.body);
+    END`,
+    `CREATE TRIGGER facts_ad AFTER DELETE ON facts BEGIN
+      INSERT INTO facts_fts (facts_fts, rowid, title, body)
+      VALUES ('delete', old.id, old.title, old.body);
+    END`,
+    `CREATE TRIGGER facts_au AFTER UPDATE ON facts BEGIN
+      INSERT INTO facts_fts (facts_fts, rowid, title, body)
+      VALUES ('delete', old.id, old.title, old.body);
+      INSERT INTO facts_fts (rowid, title, body) VALUES (new.id, new.title, new.body);
+    END`,
+    `CREATE TABLE entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL DEFAULT 'concept',
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE links (
+      src_kind TEXT NOT NULL CHECK (src_kind IN ('fact', 'decision', 'task', 'plan', 'entity')),
+      src_id TEXT NOT NULL,
+      rel TEXT NOT NULL,
+      dst_kind TEXT NOT NULL CHECK (dst_kind IN ('fact', 'decision', 'task', 'plan', 'entity')),
+      dst_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (src_kind, src_id, rel, dst_kind, dst_id)
+    )`,
+    'CREATE INDEX idx_links_dst ON links (dst_kind, dst_id)',
+    'CREATE INDEX idx_links_src ON links (src_kind, src_id)',
+    `CREATE TRIGGER tasks_ad_links AFTER DELETE ON tasks BEGIN
+      DELETE FROM links
+      WHERE (src_kind = 'task' AND src_id = old.id) OR (dst_kind = 'task' AND dst_id = old.id);
+    END`,
+    `CREATE TRIGGER plan_sections_ad_links AFTER DELETE ON plan_sections BEGIN
+      DELETE FROM links
+      WHERE (src_kind = 'plan' AND src_id = old.id) OR (dst_kind = 'plan' AND dst_id = old.id);
+    END`,
+    `CREATE TRIGGER tasks_ad_facts_task AFTER DELETE ON tasks BEGIN
+      UPDATE facts SET task_id = NULL WHERE task_id = old.id;
+    END`,
+  ],
+}
+
+export const MIGRATIONS: readonly Migration[] = [BASELINE, KNOWLEDGE]
 
 export function migrate(db: DatabaseSync): void {
   db.exec(

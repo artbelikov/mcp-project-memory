@@ -83,6 +83,19 @@ export function registerHarnessResources(server: McpServer, store: HarnessStore)
   )
 
   server.registerResource(
+    'facts',
+    'harness://facts',
+    {
+      title: 'Knowledge facts',
+      description:
+        'The append-only knowledge base (up to 200 newest facts, newest first; superseded and expired facts are hidden).',
+      mimeType: 'application/json',
+    },
+    (uri) =>
+      asResource(uri.toString(), 'application/json', { facts: store.facts.list({ limit: 200 }) }),
+  )
+
+  server.registerResource(
     'session-log',
     'harness://session-log',
     {
