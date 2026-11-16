@@ -19,6 +19,14 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["skill/**/*.md"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ],
   "linter": {
     "enabled": true,
     "rules": {
