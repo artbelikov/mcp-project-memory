@@ -80,7 +80,7 @@ The named volume persists state between sessions; point it at a host directory i
 
 Resources: `harness://overview`, `harness://tasks`, `harness://tasks/{id}`, `harness://handoff`, `harness://decisions`, `harness://facts`, `harness://facts/{ref}`, `harness://session-log`, `harness://plan` (markdown).
 
-Prompts: `session-start` (the read-before-write ritual: `overview` → `handoff_get` → `task_next` → `fact_search`, with an optional focus area) and `plan-from-requirements` (harvest → probe → plan → tasks → tracker, per the skill).
+Prompts: `session-start` (the read-before-write ritual: `overview` → `handoff_get` → `task_next` → `fact_search`, with an optional focus area), `plan-from-requirements` (harvest → probe → plan → tasks → tracker, per the skill), `plan-review` (the **goldfish** input: the plan document alone, framed for a reviewer spawned without the conversation that wrote it), and `drift-report` (stale facts + the re-verify/supersede protocol against live code).
 
 ## Knowledge base (facts + graph)
 
@@ -90,7 +90,7 @@ The knowledge base is a property graph **inside the same SQLite file** — no ve
 - **Provenance + staleness**: every fact carries `origin` (user-stated ranks above agent-inferred), `confidence` (0..1), an optional validity window, and `supersedes`. Search hides superseded and expired facts by default, so the base never confidently serves obsolete advice. Facts are append-only with immutable F-refs; retire by superseding, never by editing. When a fact is re-observed, `fact_confirm` re-stamps it instead — confirmation history feeds staleness detection.
 - **Graph**: typed links (`affects`, `discovered-in`, `uses`, `about`, `implements`…) connect facts, decisions, tasks, plan sections, and entities (components/files/technologies, auto-created). `fact_neighbourhood` walks it — start at `entity:storage-layer` to see everything known about that component. Links to a task/plan section, and a fact's `taskId`, are cleaned up automatically when that record is deleted. When auto-creation splits an alias apart (`storage` vs `storage-layer`), `entity_merge` folds the nodes back together.
 - **Retrieval**: `fact_search` uses FTS5 + bm25 with porter stemming, so "polling" matches "polls" and paraphrase recall works where substring search returns nothing. Consult it before touching a component or repeating an investigation.
-- **Hygiene**: `fact_health` reports orphan facts, mutual duplicate-title candidates, unused entities and facts not re-confirmed for 90+ days; the counts ride along in every `overview`. Clean as you go — supersede duplicates, link or merge orphans, re-confirm what you re-verified.
+- **Hygiene**: `fact_health` reports orphan facts, mutual duplicate-title candidates, unused entities and facts not re-confirmed for 90+ days; the counts ride along in every `overview`. The `drift-report` prompt renders the stale list with the re-verify protocol (confirm / supersede against live code). Clean as you go — supersede duplicates, link or merge orphans, re-confirm what you re-verified.
 - **Portability**: `harness_export` dumps every row of the store (schema-versioned); `harness_import` restores it with `replace` or merges it with `merge`, all in one transaction. Use it for backups, for seeding a second project, or for diffing two harnesses.
 
 ## The session protocol this implements

@@ -108,6 +108,41 @@ deadline backwards; every quality practice must name the phase that pays for it.
   task), never cut the demo path or the test pyramid's core.
 - Include explicit **quality iterations** (hardening, polish) as first-class tasks.
 
+## Goldfish gate — fresh-context review (after Phase 3, before any implementation session)
+
+A plan reviewed by its own author inside the conversation that wrote it passes itself.
+Get one **fresh-context review** first: a reviewer spawned with **no conversation history**
+— the amnesia is the point (inspired by Google's elephant-goldfish-model, where the
+"goldfish" sees only the document and the code).
+
+1. **Spawn the reviewer on input only.** Give a fresh subagent exactly two things: the
+   rendered plan (via the `plan-review` MCP prompt — pass `section` to scope it to one
+   section — or `plan_export`) and this repository. Never this chat, never the requirements
+   back-and-forth, never your rationale for choices.
+2. **Demand structured findings**: unstated assumptions, requirements the plan misses or
+   resolves differently than stated, non-testable ACs, named files/components that do not
+   exist or work differently, implementation risks. Each finding carries severity
+   (`blocker|major|minor`), the section, and evidence (`file:line` or a quote).
+3. **Triage every finding in the parent session.** Accepted → `plan_put` / `task_update` /
+   `decision_append`. Rejected → also record a decision with why the finding is wrong.
+   A finding silenced without a recorded reason resurfaces as a bug later.
+4. **Gate**: no implementation session starts while a blocker is unresolved or unwaived
+   (a waiver is itself a decision). Re-run the gate after any Phase-5 pass that
+   materially changed the plan.
+
+## Design docs in the repo (spec bridge — inputs in, state out)
+
+An approved design document (`docs/designs/*.md`, an exported `design_draft.md`, a PR plan)
+is an **input, never the tracker**:
+
+- Ingesting one (Phase 2): `plan_put` its content into the matching section(s), and
+  `decision_append` the resolved review choices it carries, so later sessions read the
+  store instead of re-parsing the file. The file stays as the human-readable copy.
+- Producing one: when the goldfish gate approves a plan, the approved document lands via
+  `plan_put` / `plan_export` — approval changes store state, not a chat message.
+- A design doc that exists only on disk while the store's plan is stale is drift; fix it
+  in the same session that notices.
+
 ## Phase 4 — Cross-session tracking (the store IS the tracker)
 
 1. **Start of every session**: `overview` (dashboard) + `handoff_get` + `task_next` —
@@ -160,7 +195,9 @@ one small call at the moment of discovery — not batch-written at the end.
 8. **Clean the base when it gets noisy.** `fact_health` lists orphan facts, mutual
    duplicate-title pairs, unused entities and facts not confirmed for 90+ days (counts also
    ride in `overview`): supersede duplicates, link or `entity_merge` split aliases, re-confirm
-   or retire stale facts.
+   or retire stale facts. The `drift-report` MCP prompt renders that stale list with the
+   re-verify protocol — run it (optionally scoped with `focus`) when the code may have moved
+   under old knowledge.
 
 ## Phase 5 — Reiteration passes (run after the plan exists)
 
@@ -231,6 +268,10 @@ it is part of the definition of done, not an afterthought.
   superseding; letting stale facts stand unretired so search serves obsolete advice.
 - Hand-authoring a "project graph" of code structure — derive it (tree-sitter/LSP) or
   delegate it; the knowledge graph here links knowledge to entities, it is not a code index.
+- Reviewing your own plan in the same conversation that wrote it — without fresh eyes the
+  review is ceremony; run the goldfish gate with no conversation history.
+- Letting an approved design doc live only in `docs/` while the store's plan stays stale,
+  or waiving a review blocker without recording the waiver as a decision.
 - "Minimal UI" that grows features because they were easy — scope freeze means freeze.
 
 ## Pairing note

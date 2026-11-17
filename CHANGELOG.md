@@ -19,8 +19,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - `entity_merge` folds an alias entity into another, rewiring all links atomically.
 - `harness_export` / `harness_import`: schema-versioned full-store dump with transactional
   `replace` (restore) and `merge` (skip-conflicts) import modes.
-- MCP prompts `session-start` (read-before-write ritual) and `plan-from-requirements`
-  (work-planning kickoff).
+- MCP prompts `session-start` (read-before-write ritual), `plan-from-requirements`
+  (work-planning kickoff), `plan-review` (goldfish input: the plan document alone for a
+  fresh reviewer with no conversation history), and `drift-report` (stale facts + the
+  re-verify/supersede protocol against live code).
+- Work-planning skill: the **goldfish gate** (fresh-context plan review before any
+  implementation session, findings triaged into the store) and the **spec bridge**
+  (design docs are inputs; approval and ingestion land via `plan_put` / `decision_append`).
 - Resource template `harness://facts/{ref}` for reading a single fact; `fact_search` pagination
   via `limit` + `offset`.
 - Migration 3: `fact_confirmations` table and a schema-level constraint that rejects malformed

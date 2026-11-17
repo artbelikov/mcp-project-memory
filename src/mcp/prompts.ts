@@ -41,6 +41,36 @@ export function registerHarnessPrompts(server: McpServer, store: HarnessStore): 
       ],
     }),
   )
+
+  server.registerPrompt(
+    'plan-review',
+    {
+      title: 'Fresh-context plan review',
+      description:
+        'The goldfish input: the plan document alone, framed for a reviewer spawned without the conversation that wrote it.',
+      argsSchema: { section: z.string().optional() },
+    },
+    (args: { section?: string }) => ({
+      messages: [
+        { role: 'user', content: { type: 'text', text: planReviewText(store, args.section) } },
+      ],
+    }),
+  )
+
+  server.registerPrompt(
+    'drift-report',
+    {
+      title: 'Knowledge drift report',
+      description:
+        'Render the stale-fact list and the re-verify protocol: compare what the store claims with what the code does right now.',
+      argsSchema: { focus: z.string().optional() },
+    },
+    (args: { focus?: string }) => ({
+      messages: [
+        { role: 'user', content: { type: 'text', text: driftReportText(store, args.focus) } },
+      ],
+    }),
+  )
 }
 
 function sessionStartText(store: HarnessStore, focus: string | undefined): string {
@@ -72,4 +102,75 @@ Deliverable: ${deliverable}
 5. Track: set the handoff block (handoff_set), then run session_log_add. Every later session starts with overview + handoff_get + task_next + fact_search.
 
 Never keep plan, task or decision state in chat — the store is the lookup.`
+}
+
+function planReviewText(store: HarnessStore, section: string | undefined): string {
+  const { scope, document } = renderPlan(store, section)
+  return `You are the fresh-eyes reviewer for a design. You have NO prior conversation — you never saw the requirements discussion, the reasoning, or the drafts. Everything you may rely on is the document below and the code it references in this repository. Verify against the code; do not trust the document.
+
+Challenge ${scope} on:
+
+1. Unstated assumptions — anything taken as true without evidence (versions, APIs, data shapes, user behavior).
+2. Requirements coverage — requirements the document does not address or resolves differently than stated.
+3. Acceptance criteria — non-testable wording, presence-not-behavior checks, or missing criteria for clickable behavior.
+4. Fit with the code — files, components or interfaces the plan names that do not exist or work differently than described; read them yourself.
+5. Implementation risks — ordering, migrations, concurrency, rollback, scope creep against the deadline.
+
+Output a numbered findings list. Each finding: severity (blocker | major | minor), the exact section, and concrete evidence (file:line or a quote from the document). If a suspected problem is contradicted by the code, cite the code instead of reporting it. End with an explicit verdict: approve, approve-with-changes, or reject.
+
+Review scope: ${scope}
+
+${document}`
+}
+
+function renderPlan(
+  store: HarnessStore,
+  section: string | undefined,
+): {
+  scope: string
+  document: string
+} {
+  if (section === undefined) {
+    return { scope: 'the whole plan', document: store.plan.export() }
+  }
+  try {
+    const planSection = store.plan.get(section)
+    return {
+      scope: `only the "${section}" section`,
+      document: `# ${planSection.title}\n\n${planSection.content}`,
+    }
+  } catch {
+    return {
+      scope: 'the whole plan (the requested section was not found)',
+      document: store.plan.export(),
+    }
+  }
+}
+
+function driftReportText(store: HarnessStore, focus: string | undefined): string {
+  const health = store.facts.health()
+  const staleLines =
+    health.staleFacts.length === 0
+      ? '- none: every fact was re-confirmed within the last 90 days'
+      : health.staleFacts
+          .map((fact) => `- ${fact.ref} (${fact.daysSince} days): ${fact.title}`)
+          .join('\n')
+  const focusLine = focus
+    ? `\nScope the probes to "${focus}": start from fact_neighbourhood on entity:${focus} and drift-check only the facts reachable from it; report the rest as out of scope.`
+    : ''
+  return `Run a drift report: compare what the store claims with what the code does right now. Knowledge that used to be true but no longer is the failure mode this catches.
+
+Knowledge health counts: ${JSON.stringify(health.counts)}
+
+Stale facts (not re-confirmed for 90+ days) — re-probe each against the live code or a read-only probe:${staleLines}${focusLine}
+
+For each fact in scope:
+1. Re-verify it: read the referenced code or run the probe the fact is about; note the evidence (file:line or probe result).
+2. Still true → fact_confirm(ref, note) with that evidence.
+3. Changed → fact_add the corrected fact with supersedes pointing at the old ref, carrying the same links; say what changed in the body.
+4. Gone or unverifiable → supersede it with a note saying why, rather than leaving it standing.
+
+Also compare the verified-facts plan section with current behavior: drifted entries are fixed with plan_put, and every changed behavior becomes a fact.
+
+Finish with one session_log_add line (confirmed / superseded counts) and fact_health if new problems surfaced.`
 }

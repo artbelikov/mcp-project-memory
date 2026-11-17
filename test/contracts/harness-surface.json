@@ -951,6 +951,26 @@
           "description": null
         }
       ]
+    },
+    {
+      "name": "plan-review",
+      "arguments": [
+        {
+          "name": "section",
+          "required": false,
+          "description": null
+        }
+      ]
+    },
+    {
+      "name": "drift-report",
+      "arguments": [
+        {
+          "name": "focus",
+          "required": false,
+          "description": null
+        }
+      ]
     }
   ]
 }
