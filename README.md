@@ -82,6 +82,34 @@ Resources: `harness://overview`, `harness://tasks`, `harness://tasks/{id}`, `har
 
 Prompts: `session-start` (the read-before-write ritual: `overview` → `handoff_get` → `task_next` → `fact_search`, with an optional focus area), `plan-from-requirements` (harvest → probe → plan → tasks → tracker, per the skill), `plan-review` (the **goldfish** input: the plan document alone, framed for a reviewer spawned without the conversation that wrote it), and `drift-report` (stale facts + the re-verify/supersede protocol against live code).
 
+## Field limits
+
+Every write tool validates its inputs and rejects over-long values with an `invalid: … must not exceed N characters` error. The same limits are declared in each tool's MCP input schema (per-field `description`) and tool description, so agents can see them before calling instead of discovering them by error. Limits are measured on the trimmed value.
+
+| Tool / field                          | Limit                                   |
+| ------------------------------------- | --------------------------------------- |
+| `task_create` / `task_update` `title` | ≤ 200 chars, non-empty                  |
+| `task_create` / `task_update` `spec`  | ≤ 20000 chars                           |
+| task `id`                             | T-number or lowercase slug, ≤ 48 chars  |
+| `session_log_add` `session`           | ≤ 80 chars, non-empty                   |
+| `session_log_add` `outcome`           | ≤ 300 chars, non-empty (one line)       |
+| `decision_append` `title`             | ≤ 160 chars, non-empty                  |
+| `decision_append` `body`              | ≤ 8000 chars, non-empty                 |
+| `decision_append` `category`          | ≤ 40 chars                              |
+| `handoff_set` `name`                  | ≤ 48 chars (letters/digits/space/`./-`) |
+| `handoff_set` `body`                  | ≤ 4000 chars (empty deletes)            |
+| `plan_put` `id`                       | lowercase slug, ≤ 64 chars              |
+| `plan_put` `title`                    | ≤ 120 chars, non-empty                  |
+| `plan_put` `content`                  | ≤ 50000 chars                           |
+| `fact_add` `title`                    | ≤ 160 chars, non-empty                  |
+| `fact_add` `body`                     | ≤ 8000 chars, non-empty                 |
+| `fact_confirm` `note`                 | ≤ 200 chars                             |
+| `fact_link` / `fact_unlink` `rel`     | lowercase-hyphen slug, ≤ 40 chars       |
+| entity name (`entity:…`)              | ≤ 120 chars                             |
+| `search` / `fact_search` `query`      | ≤ 120 chars                             |
+
+Numeric ranges (`limit`, `offset`, `depth`, `confidence`) are enforced in the schema itself (`min`/`max`). The canonical numbers live in `src/util.ts` (`MAX_*` constants).
+
 ## Knowledge base (facts + graph)
 
 The knowledge base is a property graph **inside the same SQLite file** — no vector DB, no graph DB, no new dependencies (FTS5 and recursive CTEs are built into `node:sqlite`).

@@ -1,9 +1,16 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { HarnessStore } from '../../store.js'
+import {
+  MAX_SECTION_CONTENT_LENGTH,
+  MAX_SECTION_ID_LENGTH,
+  MAX_SECTION_TITLE_LENGTH,
+} from '../../util.js'
 import { asTextResult, asToolResult, guard } from '../support.js'
 
-const sectionIdSchema = z.string()
+const sectionIdSchema = z
+  .string()
+  .describe(`Lowercase slug id [a-z0-9][a-z0-9._-]; max ${MAX_SECTION_ID_LENGTH} characters`)
 
 export function registerPlanTools(server: McpServer, store: HarnessStore): void {
   server.registerTool(
@@ -33,12 +40,18 @@ export function registerPlanTools(server: McpServer, store: HarnessStore): void 
     {
       title: 'Write plan section',
       description:
-        'Create or replace ONE plan section atomically by id (upsert; `title` + full markdown `content`). New sections append at the end unless `after` names an id to insert behind; `after` is ignored for existing ids. No line-level patching, no giant monolithic file to re-emit — write only the section that changed. Content is free-form markdown, 50000 characters max.',
+        'Create or replace ONE plan section atomically by id (upsert; `title` ≤120 chars + full markdown `content` ≤50000 chars). New sections append at the end unless `after` names an id to insert behind; `after` is ignored for existing ids. No line-level patching, no giant monolithic file to re-emit — write only the section that changed.',
       inputSchema: {
         id: sectionIdSchema,
-        title: z.string(),
-        content: z.string(),
-        after: sectionIdSchema.optional(),
+        title: z
+          .string()
+          .describe(`Section heading; non-empty, max ${MAX_SECTION_TITLE_LENGTH} characters`),
+        content: z
+          .string()
+          .describe(`Free-form markdown body; max ${MAX_SECTION_CONTENT_LENGTH} characters`),
+        after: sectionIdSchema
+          .optional()
+          .describe('Existing section id to insert behind (create only)'),
       },
     },
     guard((args: { id: string; title: string; content: string; after?: string }) =>

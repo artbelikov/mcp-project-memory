@@ -8,6 +8,13 @@ import {
 } from '../../repositories/facts.js'
 import { TRAVERSAL_DIRECTIONS, type TraversalDirection } from '../../repositories/graph.js'
 import type { HarnessStore } from '../../store.js'
+import {
+  MAX_FACT_BODY_LENGTH,
+  MAX_FACT_NOTE_LENGTH,
+  MAX_FACT_TITLE_LENGTH,
+  MAX_LINK_REL_LENGTH,
+  MAX_SEARCH_QUERY_LENGTH,
+} from '../../util.js'
 import { asToolResult, guard } from '../support.js'
 
 export function registerKnowledgeTools(server: McpServer, store: HarnessStore): void {
@@ -16,18 +23,33 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
     {
       title: 'Record knowledge fact',
       description:
-        'Record a durable piece of project knowledge the moment you discover it — a gotcha, an observed API behavior, an insight, or a note. A stable F-number is auto-assigned and IMMUTABLE; the log is append-only. Use `decision_append` instead for binding rules/choices with rationale; facts are observations and quirks, and they LINK to the things they are about. `kind`: gotcha | api-fact | insight | note. `origin`: user (stated by a human) or agent (inferred by you, default) — user facts rank higher. `confidence` 0..1 down-ranks uncertain inferences. Pass `links` to attach relations in the same call (e.g. {rel:"affects", dst:"entity:storage-layer"}, {rel:"discovered-in", dst:"task:T3"}); dst is a typed ref fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name (entities are auto-created). `supersedes` retires an older fact by reference instead of editing history. `validFrom`/`validTo` (YYYY-MM-DD) bound when the fact is true; expired and superseded facts are hidden from search by default. The result includes `similar` existing facts — check them and supersede rather than duplicating.',
+        'Record a durable piece of project knowledge the moment you discover it — a gotcha, an observed API behavior, an insight, or a note (title ≤160 chars, body ≤8000 chars). A stable F-number is auto-assigned and IMMUTABLE; the log is append-only. Use `decision_append` instead for binding rules/choices with rationale; facts are observations and quirks, and they LINK to the things they are about. `kind`: gotcha | api-fact | insight | note. `origin`: user (stated by a human) or agent (inferred by you, default) — user facts rank higher. `confidence` 0..1 down-ranks uncertain inferences. Pass `links` to attach relations in the same call (e.g. {rel:"affects", dst:"entity:storage-layer"}, {rel:"discovered-in", dst:"task:T3"}); dst is a typed ref fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name (entities are auto-created, name ≤120 chars). `supersedes` retires an older fact by reference instead of editing history. `validFrom`/`validTo` (YYYY-MM-DD) bound when the fact is true; expired and superseded facts are hidden from search by default. The result includes `similar` existing facts — check them and supersede rather than duplicating.',
       inputSchema: {
         kind: z.enum(FACT_KINDS),
-        title: z.string(),
-        body: z.string(),
+        title: z
+          .string()
+          .describe(`Short fact headline; non-empty, max ${MAX_FACT_TITLE_LENGTH} characters`),
+        body: z
+          .string()
+          .describe(`The observation itself; non-empty, max ${MAX_FACT_BODY_LENGTH} characters`),
         origin: z.enum(FACT_ORIGINS).optional(),
         confidence: z.number().min(0).max(1).optional(),
         taskId: z.string().optional(),
         supersedes: z.string().optional(),
         validFrom: z.string().optional(),
         validTo: z.string().optional(),
-        links: z.array(z.object({ rel: z.string(), dst: z.string() })).optional(),
+        links: z
+          .array(
+            z.object({
+              rel: z
+                .string()
+                .describe(`Lowercase-hyphen relation slug; max ${MAX_LINK_REL_LENGTH} characters`),
+              dst: z
+                .string()
+                .describe('Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name'),
+            }),
+          )
+          .optional(),
       },
     },
     guard(
@@ -64,7 +86,15 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
       title: 'Re-confirm fact',
       description:
         'Re-stamp a fact as still true when you re-observe it, without editing its content (facts stay append-only). Appends a confirmation with today’s timestamp and an optional `note` (≤200 chars); `fact_get` and the knowledge health report use the latest confirmation to decide staleness — a fact confirmed recently is never stale. Confirm a fact whenever a search or a live probe re-validates it.',
-      inputSchema: { ref: z.string(), note: z.string().optional() },
+      inputSchema: {
+        ref: z.string().describe('Exact F-number of the fact (e.g. F12)'),
+        note: z
+          .string()
+          .optional()
+          .describe(
+            `Optional evidence for the re-confirmation; max ${MAX_FACT_NOTE_LENGTH} characters`,
+          ),
+      },
     },
     guard((args: { ref: string; note?: string }) =>
       asToolResult(store.facts.confirm(args.ref, args.note)),
@@ -100,9 +130,12 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
     {
       title: 'Search knowledge',
       description:
-        'Ranked full-text search over the knowledge base (FTS5 + bm25, porter-stemmed, so "polling" matches "polls"). Tolerates paraphrase far better than substring search. Results carry a snippet and a rank; user-stated and high-confidence facts rank above uncertain agent inferences; superseded and expired facts are hidden unless `includeSuperseded` is true. Filter by `kind`, `origin`, `taskId`, or `entity` (facts linked to that component/file/technology). Paginate with `limit` + `offset` (offset defaults to 0). Omit `query` to list recent facts. Consult this BEFORE touching a component or repeating an investigation — the answer may already be recorded.',
+        'Ranked full-text search over the knowledge base (FTS5 + bm25, porter-stemmed, so "polling" matches "polls"). Tolerates paraphrase far better than substring search. Results carry a snippet and a rank; user-stated and high-confidence facts rank above uncertain agent inferences; superseded and expired facts are hidden unless `includeSuperseded` is true. Filter by `kind`, `origin`, `taskId`, or `entity` (facts linked to that component/file/technology). Paginate with `limit` + `offset` (offset defaults to 0). Omit `query` to list recent facts; a non-empty `query` is ≤120 chars. Consult this BEFORE touching a component or repeating an investigation — the answer may already be recorded.',
       inputSchema: {
-        query: z.string().optional(),
+        query: z
+          .string()
+          .optional()
+          .describe(`Search terms; max ${MAX_SEARCH_QUERY_LENGTH} characters when present`),
         kind: z.enum(FACT_KINDS).optional(),
         origin: z.enum(FACT_ORIGINS).optional(),
         taskId: z.string().optional(),
@@ -133,7 +166,19 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
       title: 'Link knowledge',
       description:
         'Add a typed relation between two nodes: `src` and `dst` are kind:id refs (fact:F1, decision:D5, task:T3, plan:scope, entity:storage-layer). `rel` is a short lowercase-hyphen slug (affects, discovered-in, uses, about, implements, relates-to…). Entity nodes are auto-created; other nodes must exist. Idempotent — linking the same triple twice is a no-op. Use this to weave facts into the project graph so retrieval can walk from a component to everything known about it.',
-      inputSchema: { src: z.string(), rel: z.string(), dst: z.string() },
+      inputSchema: {
+        src: z
+          .string()
+          .describe('Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name'),
+        rel: z
+          .string()
+          .describe(
+            `Lowercase-hyphen relation slug (affects, uses, about…); max ${MAX_LINK_REL_LENGTH} characters`,
+          ),
+        dst: z
+          .string()
+          .describe('Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name'),
+      },
     },
     guard((args: { src: string; rel: string; dst: string }) =>
       asToolResult(store.graph.link(args.src, args.rel, args.dst)),
@@ -146,7 +191,19 @@ export function registerKnowledgeTools(server: McpServer, store: HarnessStore): 
       title: 'Unlink knowledge',
       description:
         'Remove a typed relation (same src/rel/dst triple as fact_link). Links are associations, not history, so removing a wrong edge is allowed; facts and decisions themselves are never deleted.',
-      inputSchema: { src: z.string(), rel: z.string(), dst: z.string() },
+      inputSchema: {
+        src: z
+          .string()
+          .describe('Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name'),
+        rel: z
+          .string()
+          .describe(
+            `Lowercase-hyphen relation slug (affects, uses, about…); max ${MAX_LINK_REL_LENGTH} characters`,
+          ),
+        dst: z
+          .string()
+          .describe('Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name'),
+      },
     },
     guard((args: { src: string; rel: string; dst: string }) =>
       asToolResult(store.graph.unlink(args.src, args.rel, args.dst)),

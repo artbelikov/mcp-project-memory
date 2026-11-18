@@ -41,7 +41,8 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Task id: a T-number (T0–T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
           }
         },
         "required": [
@@ -60,13 +61,16 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "One-line summary; non-empty, max 200 characters"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Task id: a T-number (T0–T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
           },
           "spec": {
-            "type": "string"
+            "type": "string",
+            "description": "Long-form goal/scope/acceptance criteria as markdown; max 20000 characters"
           },
           "status": {
             "type": "string",
@@ -79,7 +83,8 @@
             ]
           },
           "blockedReason": {
-            "type": "string"
+            "type": "string",
+            "description": "Required when status is \"blocked\"; cleared automatically when leaving blocked"
           }
         },
         "required": [
@@ -96,13 +101,16 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Task id: a T-number (T0–T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "One-line summary; non-empty, max 200 characters"
           },
           "spec": {
-            "type": "string"
+            "type": "string",
+            "description": "Long-form goal/scope/acceptance criteria as markdown; max 20000 characters"
           },
           "status": {
             "type": "string",
@@ -115,7 +123,8 @@
             ]
           },
           "blockedReason": {
-            "type": "string"
+            "type": "string",
+            "description": "Required when status is \"blocked\"; cleared automatically when leaving blocked"
           }
         },
         "required": [
@@ -132,7 +141,8 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Task id: a T-number (T0–T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
           },
           "force": {
             "type": "boolean"
@@ -152,12 +162,14 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Task id: a T-number (T0–T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
           },
           "dependsOn": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "description": "Task id: a T-number (T0–T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
             }
           }
         },
@@ -176,15 +188,19 @@
         "type": "object",
         "properties": {
           "session": {
-            "type": "string"
+            "type": "string",
+            "description": "Short kebab-style session name; non-empty, max 80 characters"
           },
           "outcome": {
-            "type": "string"
+            "type": "string",
+            "description": "One condensed line: what was done + resulting state; non-empty, max 300 characters"
           },
           "taskId": {
+            "description": "Optional task id this session worked on (e.g. T3)",
             "type": "string"
           },
           "date": {
+            "description": "UTC day as YYYY-MM-DD; defaults to today",
             "type": "string"
           }
         },
@@ -227,18 +243,23 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Concrete behavior name; non-empty, max 160 characters"
           },
           "body": {
-            "type": "string"
+            "type": "string",
+            "description": "Binding rule + rationale/trade-off; non-empty, max 8000 characters"
           },
           "category": {
+            "description": "Open short slug (api-facts, process, architecture, testing…); max 40 characters",
             "type": "string"
           },
           "taskId": {
+            "description": "Optional task id this decision relates to (e.g. T3)",
             "type": "string"
           },
           "supersedes": {
+            "description": "D-number of the decision this retires (e.g. D5)",
             "type": "string"
           }
         },
@@ -314,10 +335,12 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Short section key (last-completed, next-up, blockers, follow-ups, pushed); letters/digits/space/./-/ only, max 48 characters"
           },
           "body": {
-            "type": "string"
+            "type": "string",
+            "description": "Full replacement text; max 4000 characters; empty body deletes the section"
           }
         },
         "required": [
@@ -346,7 +369,8 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Lowercase slug id [a-z0-9][a-z0-9._-]; max 64 characters"
           }
         },
         "required": [
@@ -365,15 +389,19 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Lowercase slug id [a-z0-9][a-z0-9._-]; max 64 characters"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Section heading; non-empty, max 120 characters"
           },
           "content": {
-            "type": "string"
+            "type": "string",
+            "description": "Free-form markdown body; max 50000 characters"
           },
           "after": {
+            "description": "Existing section id to insert behind (create only)",
             "type": "string"
           }
         },
@@ -393,7 +421,8 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Lowercase slug id [a-z0-9][a-z0-9._-]; max 64 characters"
           }
         },
         "required": [
@@ -432,7 +461,8 @@
         "type": "object",
         "properties": {
           "query": {
-            "type": "string"
+            "type": "string",
+            "description": "Search terms; non-empty, max 120 characters"
           },
           "limit": {
             "type": "integer",
@@ -465,10 +495,12 @@
             ]
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Short fact headline; non-empty, max 160 characters"
           },
           "body": {
-            "type": "string"
+            "type": "string",
+            "description": "The observation itself; non-empty, max 8000 characters"
           },
           "origin": {
             "type": "string",
@@ -500,10 +532,12 @@
               "type": "object",
               "properties": {
                 "rel": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Lowercase-hyphen relation slug; max 40 characters"
                 },
                 "dst": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name"
                 }
               },
               "required": [
@@ -548,9 +582,11 @@
         "type": "object",
         "properties": {
           "ref": {
-            "type": "string"
+            "type": "string",
+            "description": "Exact F-number of the fact (e.g. F12)"
           },
           "note": {
+            "description": "Optional evidence for the re-confirmation; max 200 characters",
             "type": "string"
           }
         },
@@ -600,6 +636,7 @@
         "type": "object",
         "properties": {
           "query": {
+            "description": "Search terms; max 120 characters when present",
             "type": "string"
           },
           "kind": {
@@ -651,13 +688,16 @@
         "type": "object",
         "properties": {
           "src": {
-            "type": "string"
+            "type": "string",
+            "description": "Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name"
           },
           "rel": {
-            "type": "string"
+            "type": "string",
+            "description": "Lowercase-hyphen relation slug (affects, uses, about…); max 40 characters"
           },
           "dst": {
-            "type": "string"
+            "type": "string",
+            "description": "Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name"
           }
         },
         "required": [
@@ -676,13 +716,16 @@
         "type": "object",
         "properties": {
           "src": {
-            "type": "string"
+            "type": "string",
+            "description": "Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name"
           },
           "rel": {
-            "type": "string"
+            "type": "string",
+            "description": "Lowercase-hyphen relation slug (affects, uses, about…); max 40 characters"
           },
           "dst": {
-            "type": "string"
+            "type": "string",
+            "description": "Typed ref: fact:F1 | decision:D5 | task:T3 | plan:scope | entity:name"
           }
         },
         "required": [

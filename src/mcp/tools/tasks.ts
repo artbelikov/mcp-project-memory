@@ -2,12 +2,23 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { TASK_STATUSES, type TaskStatus } from '../../repositories/tasks.js'
 import type { HarnessStore } from '../../store.js'
+import { MAX_SPEC_LENGTH, MAX_TITLE_LENGTH } from '../../util.js'
 import { asToolResult, guard } from '../support.js'
 
-const idSchema = z.string()
-const titleSchema = z.string()
-const specSchema = z.string()
-const blockedReasonSchema = z.string()
+const idSchema = z
+  .string()
+  .describe('Task id: a T-number (T0–T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters')
+const titleSchema = z
+  .string()
+  .describe(`One-line summary; non-empty, max ${MAX_TITLE_LENGTH} characters`)
+const specSchema = z
+  .string()
+  .describe(
+    `Long-form goal/scope/acceptance criteria as markdown; max ${MAX_SPEC_LENGTH} characters`,
+  )
+const blockedReasonSchema = z
+  .string()
+  .describe('Required when status is "blocked"; cleared automatically when leaving blocked')
 const statusSchema = z.enum(TASK_STATUSES)
 
 export function registerTaskTools(server: McpServer, store: HarnessStore): void {
@@ -53,7 +64,7 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
     {
       title: 'Create task',
       description:
-        'Append a task to the board. Auto-allocates the next T-number unless `id` is given (duplicates are rejected). Keep `title` a one-line summary; put the detailed goal/scope/acceptance criteria into `spec` as markdown. New tasks start as todo, or as blocked (then `blockedReason` is required). Run task_next first when unsure where this task belongs.',
+        'Append a task to the board. Auto-allocates the next T-number unless `id` is given (duplicates are rejected). Keep `title` a one-line summary (≤200 chars); put the detailed goal/scope/acceptance criteria into `spec` as markdown (≤20000 chars). New tasks start as todo, or as blocked (then `blockedReason` is required). Run task_next first when unsure where this task belongs.',
       inputSchema: {
         title: titleSchema,
         id: idSchema.optional(),
