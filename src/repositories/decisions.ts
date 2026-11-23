@@ -1,7 +1,17 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 import { withTransaction, withUniqueRetry } from '../db/database.js'
 import { HarnessError } from '../errors.js'
-import { DECISION_REF_PATTERN, nextNumberIn, nowIso, searchTerms } from '../util.js'
+import {
+  assertMaxLength,
+  assertString,
+  DECISION_REF_PATTERN,
+  MAX_DECISION_BODY_LENGTH,
+  MAX_DECISION_CATEGORY_LENGTH,
+  MAX_DECISION_TITLE_LENGTH,
+  nextNumberIn,
+  nowIso,
+  searchTerms,
+} from '../util.js'
 
 export type Decision = {
   ref: string
@@ -52,9 +62,9 @@ export class DecisionsRepository {
     taskId?: string
     supersedes?: string
   }): Decision {
-    const title = assertString(input.title, 'title', 160)
-    const body = assertString(input.body, 'body', 8_000)
-    const category = emptyToNull(input.category, 'category', 40)
+    const title = assertString(input.title, 'title', MAX_DECISION_TITLE_LENGTH)
+    const body = assertString(input.body, 'body', MAX_DECISION_BODY_LENGTH)
+    const category = emptyToNull(input.category, 'category', MAX_DECISION_CATEGORY_LENGTH)
     if (input.taskId !== undefined && this.selectTaskId.get(input.taskId) === undefined) {
       throw new HarnessError('not-found', `task "${input.taskId}" does not exist`)
     }
@@ -129,23 +139,10 @@ function toDecision(row: DecisionRow): Decision {
   }
 }
 
-function assertString(value: unknown, label: string, maxLength: number): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new HarnessError('invalid', `${label} must be a non-empty string`)
-  }
-  const trimmed = value.trim()
-  if (trimmed.length > maxLength) {
-    throw new HarnessError('invalid', `${label} must not exceed ${maxLength} characters`)
-  }
-  return trimmed
-}
-
 function emptyToNull(value: string | undefined, label: string, maxLength: number): string | null {
   if (value === undefined) return null
   const trimmed = value.trim()
   if (trimmed.length === 0) return null
-  if (trimmed.length > maxLength) {
-    throw new HarnessError('invalid', `${label} must not exceed ${maxLength} characters`)
-  }
+  assertMaxLength(trimmed, label, maxLength)
   return trimmed
 }

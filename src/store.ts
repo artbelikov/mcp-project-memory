@@ -1,5 +1,4 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { HarnessError } from './errors.js'
 import { type Decision, DecisionsRepository } from './repositories/decisions.js'
 import {
   type FactHealthCounts,
@@ -18,7 +17,7 @@ import {
   type TaskStatus,
   TasksRepository,
 } from './repositories/tasks.js'
-import { MAX_SEARCH_QUERY_LENGTH, truncate } from './util.js'
+import { assertString, MAX_SEARCH_QUERY_LENGTH, truncate } from './util.js'
 
 export type HarnessStore = {
   db: DatabaseSync
@@ -108,13 +107,7 @@ export function searchAll(
   rawQuery: string,
   limit = SEARCH_DEFAULT_LIMIT,
 ): SearchResults {
-  const query = rawQuery.trim()
-  if (query.length === 0) {
-    throw new HarnessError('invalid', 'query must be a non-empty string')
-  }
-  if (query.length > MAX_SEARCH_QUERY_LENGTH) {
-    throw new HarnessError('invalid', `query must not exceed ${MAX_SEARCH_QUERY_LENGTH} characters`)
-  }
+  const query = assertString(rawQuery, 'query', MAX_SEARCH_QUERY_LENGTH)
   const terms = query.toLowerCase().split(/\s+/)
   const matches = (text: string) => {
     const lowered = text.toLowerCase()

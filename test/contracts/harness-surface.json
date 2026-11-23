@@ -352,6 +352,29 @@
       "annotations": null
     },
     {
+      "name": "handoff_append",
+      "title": "Append to handoff section",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Short section key (last-completed, next-up, blockers, follow-ups, pushed); letters/digits/space/./-/ only, max 48 characters"
+          },
+          "text": {
+            "type": "string",
+            "description": "Text to append; newline-separated from the existing body; the combined body must stay ≤4000 characters"
+          }
+        },
+        "required": [
+          "name",
+          "text"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
       "name": "plan_list",
       "title": "List plan sections",
       "inputSchema": {

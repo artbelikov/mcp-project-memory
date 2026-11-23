@@ -1,6 +1,12 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 import { HarnessError } from '../errors.js'
-import { LOG_DATE_PATTERN, todayIsoDate } from '../util.js'
+import {
+  assertString,
+  LOG_DATE_PATTERN,
+  MAX_OUTCOME_LENGTH,
+  MAX_SESSION_NAME_LENGTH,
+  todayIsoDate,
+} from '../util.js'
 
 export type SessionLogEntry = {
   id: number
@@ -43,8 +49,8 @@ export class SessionLogRepository {
     taskId?: string
     date?: string
   }): SessionLogEntry {
-    const session = assertString(input.session, 'session', 80)
-    const outcome = assertString(input.outcome, 'outcome', 300)
+    const session = assertString(input.session, 'session', MAX_SESSION_NAME_LENGTH)
+    const outcome = assertString(input.outcome, 'outcome', MAX_OUTCOME_LENGTH)
     const date = input.date ?? todayIsoDate()
     if (!LOG_DATE_PATTERN.test(date)) {
       throw new HarnessError('invalid', `date "${date}" must be formatted YYYY-MM-DD`)
@@ -86,15 +92,4 @@ function toEntry(row: SessionLogRow): SessionLogEntry {
     outcome: row.outcome,
     taskId: row.task_id,
   }
-}
-
-function assertString(value: unknown, label: string, maxLength: number): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new HarnessError('invalid', `${label} must be a non-empty string`)
-  }
-  const trimmed = value.trim()
-  if (trimmed.length > maxLength) {
-    throw new HarnessError('invalid', `${label} must not exceed ${maxLength} characters`)
-  }
-  return trimmed
 }

@@ -23,10 +23,10 @@ describe('length caps surface as invalid', () => {
   it('rejects an over-long title at create and at update', async () => {
     const overLong = 'x'.repeat(201)
     const created = await harness.err('task_create', { title: overLong })
-    expect(created).toBe('invalid: title must not exceed 200 characters')
+    expect(created).toBe('invalid: title is 201 characters; limit 200 (over by 1)')
     await createAtCap('T0', 'short')
     const updated = await harness.err('task_update', { id: 'T0', title: overLong })
-    expect(updated).toBe('invalid: title must not exceed 200 characters')
+    expect(updated).toBe('invalid: title is 201 characters; limit 200 (over by 1)')
   })
 
   it('accepts a title at exactly the cap', async () => {
@@ -38,10 +38,10 @@ describe('length caps surface as invalid', () => {
   it('rejects over-long specs at create and update', async () => {
     const spec = 'y'.repeat(20_001)
     const created = await harness.err('task_create', { title: 'ok', spec })
-    expect(created).toBe('invalid: spec must not exceed 20000 characters')
+    expect(created).toBe('invalid: spec is 20001 characters; limit 20000 (over by 1)')
     await createAtCap('T0', 'ok')
     const updated = await harness.err('task_update', { id: 'T0', spec })
-    expect(updated).toBe('invalid: spec must not exceed 20000 characters')
+    expect(updated).toBe('invalid: spec is 20001 characters; limit 20000 (over by 1)')
   })
 
   it('rejects over-long session log fields', async () => {
@@ -59,20 +59,20 @@ describe('length caps surface as invalid', () => {
 
   it('rejects over-long decision fields and categories', async () => {
     const badTitle = await harness.err('decision_append', { title: 't'.repeat(161), body: 'ok' })
-    expect(badTitle).toBe('invalid: title must not exceed 160 characters')
+    expect(badTitle).toBe('invalid: title is 161 characters; limit 160 (over by 1)')
     const badBody = await harness.err('decision_append', { title: 'ok', body: 'b'.repeat(8001) })
-    expect(badBody).toBe('invalid: body must not exceed 8000 characters')
+    expect(badBody).toBe('invalid: body is 8001 characters; limit 8000 (over by 1)')
     const badCategory = await harness.err('decision_append', {
       title: 'ok',
       body: 'b',
       category: 'c'.repeat(41),
     })
-    expect(badCategory).toBe('invalid: category must not exceed 40 characters')
+    expect(badCategory).toBe('invalid: category is 41 characters; limit 40 (over by 1)')
   })
 
   it('rejects over-long handoff sections', async () => {
     const text = await harness.err('handoff_set', { name: 'next-up', body: 'h'.repeat(4001) })
-    expect(text).toBe('invalid: section body must not exceed 4000 characters')
+    expect(text).toBe('invalid: section body is 4001 characters; limit 4000 (over by 1)')
     const emptyName = await harness.err('handoff_set', { name: '', body: 'x' })
     expect(emptyName.startsWith('invalid:')).toBe(true)
   })
@@ -83,7 +83,7 @@ describe('length caps surface as invalid', () => {
       title: 'p'.repeat(121),
       content: 'x',
     })
-    expect(text).toBe('invalid: title must not exceed 120 characters')
+    expect(text).toBe('invalid: title is 121 characters; limit 120 (over by 1)')
   })
 })
 

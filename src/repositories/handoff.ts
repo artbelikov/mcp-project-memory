@@ -1,10 +1,17 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 import { HarnessError } from '../errors.js'
-import { HANDOFF_SECTION_PATTERN, MAX_HANDOFF_BODY_LENGTH, nowIso } from '../util.js'
+import {
+  assertMaxLength,
+  HANDOFF_SECTION_PATTERN,
+  MAX_HANDOFF_BODY_LENGTH,
+  nowIso,
+} from '../util.js'
 
 export type HandoffSection = {
   name: string
   body: string
+  length: number
+  limit: number
   updatedAt: string
 }
 
@@ -48,32 +55,52 @@ export class HandoffRepository {
 
   set(name: string, body: string): Handoff {
     const sectionName = assertSectionName(name)
-    if (body.trim() === '') {
+    const trimmed = body.trim()
+    if (trimmed === '') {
       this.deleteSection.run(sectionName)
       return this.get()
     }
-    if (body.length > MAX_HANDOFF_BODY_LENGTH) {
-      throw new HarnessError(
-        'invalid',
-        `section body must not exceed ${MAX_HANDOFF_BODY_LENGTH} characters`,
-      )
-    }
-    const existing = this.positionOf(sectionName)
-    const maxRow = this.selectMax.get() as { max: number } | undefined
-    const position = existing ?? Number(maxRow?.max ?? 0) + 1
-    this.upsertSection.run(sectionName, body.trim(), position, nowIso())
+    assertMaxLength(trimmed, 'section body', MAX_HANDOFF_BODY_LENGTH)
+    const position = this.positionOf(sectionName) ?? this.nextPosition()
+    this.upsertSection.run(sectionName, trimmed, position, nowIso())
     return this.get()
   }
 
-  private positionOf(name: string): number | null {
+  append(name: string, text: string): Handoff {
+    const sectionName = assertSectionName(name)
+    const addition = text.trim()
+    if (addition === '') return this.get()
+    const existing = this.findRow(sectionName)
+    const combined = existing === undefined ? addition : `${existing.body}\n${addition}`
+    assertMaxLength(combined, 'section body', MAX_HANDOFF_BODY_LENGTH)
+    const position = existing?.position ?? this.nextPosition()
+    this.upsertSection.run(sectionName, combined, position, nowIso())
+    return this.get()
+  }
+
+  private nextPosition(): number {
+    const maxRow = this.selectMax.get() as { max: number } | undefined
+    return Number(maxRow?.max ?? 0) + 1
+  }
+
+  private findRow(name: string): HandoffRow | undefined {
     const rows = this.selectAll.all() as unknown as HandoffRow[]
-    const found = rows.find((row) => row.name === name)
-    return found === undefined ? null : found.position
+    return rows.find((row) => row.name === name)
+  }
+
+  private positionOf(name: string): number | null {
+    return this.findRow(name)?.position ?? null
   }
 }
 
 function toSection(row: HandoffRow): HandoffSection {
-  return { name: row.name, body: row.body, updatedAt: row.updated_at }
+  return {
+    name: row.name,
+    body: row.body,
+    length: row.body.length,
+    limit: MAX_HANDOFF_BODY_LENGTH,
+    updatedAt: row.updated_at,
+  }
 }
 
 function assertSectionName(name: string): string {

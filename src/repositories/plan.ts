@@ -1,6 +1,8 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 import { HarnessError } from '../errors.js'
 import {
+  assertMaxLength,
+  assertString,
   MAX_SECTION_CONTENT_LENGTH,
   MAX_SECTION_TITLE_LENGTH,
   nowIso,
@@ -60,12 +62,7 @@ export class PlanRepository {
   put(input: PlanPutInput): PlanSection {
     const id = assertSectionId(input.id)
     const title = assertString(input.title, 'title', MAX_SECTION_TITLE_LENGTH)
-    if (input.content.length > MAX_SECTION_CONTENT_LENGTH) {
-      throw new HarnessError(
-        'invalid',
-        `content must not exceed ${MAX_SECTION_CONTENT_LENGTH} characters`,
-      )
-    }
+    assertMaxLength(input.content, 'content', MAX_SECTION_CONTENT_LENGTH)
     const existing = this.selectById.get(id)
     const at = nowIso()
     if (existing !== undefined) {
@@ -147,17 +144,6 @@ function assertSectionId(id: string): string {
       'invalid',
       `plan section id "${trimmed}" must match ${PLAN_SECTION_ID_PATTERN}`,
     )
-  }
-  return trimmed
-}
-
-function assertString(value: unknown, label: string, maxLength: number): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new HarnessError('invalid', `${label} must be a non-empty string`)
-  }
-  const trimmed = value.trim()
-  if (trimmed.length > maxLength) {
-    throw new HarnessError('invalid', `${label} must not exceed ${maxLength} characters`)
   }
   return trimmed
 }

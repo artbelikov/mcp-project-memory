@@ -348,7 +348,7 @@ describe('fact_confirm', () => {
     )
     const fact = await addFact()
     expect(await harness.err('fact_confirm', { ref: fact.ref, note: 'n'.repeat(201) })).toContain(
-      'note must not exceed 200 characters',
+      'note is 201 characters; limit 200 (over by 1)',
     )
   })
 })

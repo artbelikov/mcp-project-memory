@@ -1,7 +1,17 @@
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 import { withTransaction } from '../db/database.js'
 import { HarnessError } from '../errors.js'
-import { compareNatural, nextNumberIn, nowIso, TASK_ID_PATTERN, TASK_REF_PATTERN } from '../util.js'
+import {
+  assertMaxLength,
+  assertString,
+  compareNatural,
+  MAX_SPEC_LENGTH,
+  MAX_TITLE_LENGTH,
+  nextNumberIn,
+  nowIso,
+  TASK_ID_PATTERN,
+  TASK_REF_PATTERN,
+} from '../util.js'
 
 export const TASK_STATUSES = ['todo', 'in-progress', 'blocked', 'done', 'cancelled'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
@@ -58,13 +68,6 @@ type TaskRow = {
   updated_at: string
 }
 
-function assertValue(value: unknown, label: string): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new HarnessError('invalid', `${label} must be a non-empty string`)
-  }
-  return value.trim()
-}
-
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Error && error.message.includes('UNIQUE constraint failed')
 }
@@ -101,14 +104,9 @@ export class TasksRepository {
   }
 
   create(input: CreateTaskInput): Task {
-    const title = assertValue(input.title, 'title')
-    if (title.length > 200) {
-      throw new HarnessError('invalid', `title must not exceed 200 characters`)
-    }
+    const title = assertString(input.title, 'title', MAX_TITLE_LENGTH)
     const spec = input.spec ?? ''
-    if (spec.length > 20_000) {
-      throw new HarnessError('invalid', `spec must not exceed 20000 characters`)
-    }
+    assertMaxLength(spec, 'spec', MAX_SPEC_LENGTH)
     const status = input.status ?? 'todo'
     if (status !== 'blocked' && input.blockedReason !== undefined) {
       throw new HarnessError('invalid', 'blockedReason applies only when status is "blocked"')
@@ -164,14 +162,12 @@ export class TasksRepository {
 
   update(id: string, patch: TaskPatch): Task {
     const existing = this.get(id)
-    const title = patch.title !== undefined ? assertValue(patch.title, 'title') : existing.title
-    if (title.length > 200) {
-      throw new HarnessError('invalid', `title must not exceed 200 characters`)
-    }
+    const title =
+      patch.title !== undefined
+        ? assertString(patch.title, 'title', MAX_TITLE_LENGTH)
+        : existing.title
     const spec = patch.spec !== undefined ? patch.spec : existing.spec
-    if (spec.length > 20_000) {
-      throw new HarnessError('invalid', `spec must not exceed 20000 characters`)
-    }
+    assertMaxLength(spec, 'spec', MAX_SPEC_LENGTH)
     const status = patch.status ?? existing.status
     const patchReason = patch.blockedReason
     if (patchReason !== undefined && status !== 'blocked' && patchReason.trim() !== '') {

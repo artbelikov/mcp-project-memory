@@ -196,6 +196,48 @@ describe('handoff', () => {
     const badName = await harness.err('handoff_set', { name: '!bad', body: 'x' })
     expect(badName.startsWith('invalid:')).toBe(true)
   })
+
+  it('reports the current length and the limit on each section', async () => {
+    await harness.ok('handoff_set', { name: 'next-up', body: 'T1' })
+    const handoff = asHandoff(await harness.ok('handoff_get'))
+    const [section] = handoff.sections
+    expect(section?.length).toBe(2)
+    expect(section?.limit).toBe(4000)
+  })
+
+  it('appends newline-separated without resending the body or moving the section', async () => {
+    await harness.ok('handoff_set', { name: 'a', body: 'first line' })
+    await harness.ok('handoff_set', { name: 'b', body: 'second' })
+    await harness.ok('handoff_append', { name: 'a', text: 'appended line' })
+    const handoff = asHandoff(await harness.ok('handoff_get'))
+    expect(handoff.sections.map((section) => [section.name, section.body])).toEqual([
+      ['a', 'first line\nappended line'],
+      ['b', 'second'],
+    ])
+  })
+
+  it('creates the section when appending to an absent name', async () => {
+    await harness.ok('handoff_append', { name: 'fresh', text: 'hello' })
+    const handoff = asHandoff(await harness.ok('handoff_get'))
+    expect(handoff.sections.map((section) => [section.name, section.body])).toEqual([
+      ['fresh', 'hello'],
+    ])
+  })
+
+  it('reports the combined length and overage when an append overflows', async () => {
+    await harness.ok('handoff_set', { name: 'next-up', body: 'h'.repeat(3990) })
+    const text = await harness.err('handoff_append', { name: 'next-up', text: 'x'.repeat(20) })
+    expect(text).toBe('invalid: section body is 4011 characters; limit 4000 (over by 11)')
+    const handoff = asHandoff(await harness.ok('handoff_get'))
+    expect(handoff.sections[0]?.body).toBe('h'.repeat(3990))
+  })
+
+  it('treats empty append text as a no-op', async () => {
+    await harness.ok('handoff_set', { name: 'a', body: 'one' })
+    await harness.ok('handoff_append', { name: 'a', text: '   ' })
+    const handoff = asHandoff(await harness.ok('handoff_get'))
+    expect(handoff.sections.map((section) => section.body)).toEqual(['one'])
+  })
 })
 
 describe('overview', () => {

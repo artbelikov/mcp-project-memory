@@ -15,6 +15,7 @@ export const MAX_TITLE_LENGTH = 200
 export const MAX_SPEC_LENGTH = 20_000
 export const MAX_DECISION_TITLE_LENGTH = 160
 export const MAX_DECISION_BODY_LENGTH = 8_000
+export const MAX_DECISION_CATEGORY_LENGTH = 40
 export const MAX_OUTCOME_LENGTH = 300
 export const MAX_SESSION_NAME_LENGTH = 80
 export const MAX_HANDOFF_BODY_LENGTH = 4_000
@@ -62,6 +63,24 @@ export function nextNumberIn(values: readonly string[], pattern: RegExp, floor =
 
 export function truncate(text: string, maxLength: number): string {
   return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1).trimEnd()}…`
+}
+
+export function assertMaxLength(value: string, label: string, maxLength: number): void {
+  if (value.length > maxLength) {
+    throw new HarnessError(
+      'invalid',
+      `${label} is ${value.length} characters; limit ${maxLength} (over by ${value.length - maxLength})`,
+    )
+  }
+}
+
+export function assertString(value: unknown, label: string, maxLength: number): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new HarnessError('invalid', `${label} must be a non-empty string`)
+  }
+  const trimmed = value.trim()
+  assertMaxLength(trimmed, label, maxLength)
+  return trimmed
 }
 
 export function matchesAll(haystack: string, needles: readonly string[]): boolean {

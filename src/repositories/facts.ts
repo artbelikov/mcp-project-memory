@@ -2,6 +2,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import { withTransaction, withUniqueRetry } from '../db/database.js'
 import { HarnessError } from '../errors.js'
 import {
+  assertMaxLength,
+  assertString,
   FACT_REF_PATTERN,
   ftsMatchQuery,
   LOG_DATE_PATTERN,
@@ -372,12 +374,7 @@ export class FactsRepository {
     today: string,
   ): FactSearchHit[] {
     const query = filter.query ?? ''
-    if (query.length > MAX_SEARCH_QUERY_LENGTH) {
-      throw new HarnessError(
-        'invalid',
-        `query must not exceed ${MAX_SEARCH_QUERY_LENGTH} characters`,
-      )
-    }
+    assertMaxLength(query, 'query', MAX_SEARCH_QUERY_LENGTH)
     const match = ftsMatchQuery(query)
     const { clauses, params } = this.buildFilters(filter, today)
     const extra = clauses.length > 0 ? `AND ${clauses.join(' AND ')}` : ''
@@ -529,17 +526,6 @@ function assertDate(value: string | undefined, label: string): string | null {
   return trimmed
 }
 
-function assertString(value: unknown, label: string, maxLength: number): string {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new HarnessError('invalid', `${label} must be a non-empty string`)
-  }
-  const trimmed = value.trim()
-  if (trimmed.length > maxLength) {
-    throw new HarnessError('invalid', `${label} must not exceed ${maxLength} characters`)
-  }
-  return trimmed
-}
-
 function clampLimit(limit: number | undefined, max = 50): number {
   const value = limit ?? Math.min(10, max)
   if (!Number.isInteger(value) || value < 1 || value > max) {
@@ -564,9 +550,7 @@ function assertOptionalNote(value: string | undefined): string | null {
   if (value === undefined) return null
   const trimmed = value.trim()
   if (trimmed.length === 0) return null
-  if (trimmed.length > MAX_FACT_NOTE_LENGTH) {
-    throw new HarnessError('invalid', `note must not exceed ${MAX_FACT_NOTE_LENGTH} characters`)
-  }
+  assertMaxLength(trimmed, 'note', MAX_FACT_NOTE_LENGTH)
   return trimmed
 }
 

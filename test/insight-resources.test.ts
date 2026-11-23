@@ -27,6 +27,7 @@ const TOOL_NAMES = [
   'decision_get',
   'handoff_get',
   'handoff_set',
+  'handoff_append',
   'plan_list',
   'plan_get',
   'plan_put',
@@ -195,7 +196,7 @@ describe('search', () => {
       expect(text).toBe('invalid: query must be a non-empty string')
     }
     const overLong = await harness.err('search', { query: 'q'.repeat(121) })
-    expect(overLong).toBe('invalid: query must not exceed 120 characters')
+    expect(overLong).toBe('invalid: query is 121 characters; limit 120 (over by 1)')
   })
 
   it('respects the per-collection limit', async () => {
