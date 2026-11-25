@@ -273,6 +273,7 @@ it is part of the definition of done, not an afterthought.
 - Letting an approved design doc live only in `docs/` while the store's plan stays stale,
   or waiving a review blocker without recording the waiver as a decision.
 - "Minimal UI" that grows features because they were easy — scope freeze means freeze.
+- Writing per-task delivery/acceptance reports as markdown files when the store is connected — the store is the report (`session_log_add`, `fact_add` linked to the task, `handoff_set`); only AC-named, script-generated artifacts belong on disk.
 
 ## Pairing note
 
