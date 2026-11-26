@@ -1,6 +1,6 @@
 {
   "name": "mcp-project-memory",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Universal AI task and plan execution harness: MCP server over a SQLite store (tasks, dependencies, decisions, session log, handoff, plan, knowledge base) plus the work-planning skill",

@@ -4,6 +4,14 @@ export type HarnessErrorCode =
   | 'invalid'
   | 'dependency-cycle'
   | 'blocked-by-dependents'
+  | 'review-required'
+  | 'review-open'
+  | 'review-stale'
+  | 'review-round-cap'
+  | 'review-phase'
+  | 'review-lens-missing'
+  | 'review-checks'
+  | 'review-unrefuted'
 
 export class HarnessError extends Error {
   constructor(

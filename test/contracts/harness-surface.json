@@ -125,6 +125,14 @@
           "blockedReason": {
             "type": "string",
             "description": "Required when status is \"blocked\"; cleared automatically when leaving blocked"
+          },
+          "headSha": {
+            "type": "string",
+            "description": "Reviewed commit SHA used to prove the review matches the code being completed; max 200 characters"
+          },
+          "diffHash": {
+            "type": "string",
+            "description": "Reviewed diff fingerprint used to prove the worktree matches the review; max 200 characters"
           }
         },
         "required": [
@@ -793,6 +801,548 @@
       }
     },
     {
+      "name": "review_start",
+      "title": "Start or advance a code review",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task id to review"
+          },
+          "baseRef": {
+            "description": "Base branch/ref the diff is measured from; max 200 chars",
+            "type": "string"
+          },
+          "baseSha": {
+            "description": "Base commit SHA",
+            "type": "string"
+          },
+          "headSha": {
+            "description": "Head commit SHA under review",
+            "type": "string"
+          },
+          "diffHash": {
+            "description": "Stable fingerprint of the reviewed diff",
+            "type": "string"
+          },
+          "changedPaths": {
+            "description": "Changed file paths; each max 500 chars",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "linesChanged": {
+            "description": "Total added + removed lines, used to derive the risk tier",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "risk": {
+            "description": "Risk tier; derived from changedPaths when omitted",
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "exempt"
+            ]
+          },
+          "oracle": {
+            "description": "Quoted acceptance criteria/invariants read before the code; max 20000 chars",
+            "type": "string"
+          },
+          "reviewer": {
+            "description": "Reviewer identity: subagent id, model, or session label",
+            "type": "string"
+          },
+          "freshContext": {
+            "description": "True when the reviewer has no conversation history; required for medium/high risk",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "taskId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "review_record_findings",
+      "title": "Record review candidates",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Review ref like CR1"
+          },
+          "findings": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "lens": {
+                  "type": "string",
+                  "enum": [
+                    "correctness",
+                    "security",
+                    "data",
+                    "tests",
+                    "conventions",
+                    "blast-radius",
+                    "over-engineering",
+                    "spec"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Short finding title; max 200 chars"
+                },
+                "file": {
+                  "type": "string",
+                  "description": "File path"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991,
+                  "description": "1-based line number"
+                },
+                "claim": {
+                  "type": "string",
+                  "description": "What is wrong, one sentence; max 1000 chars"
+                },
+                "failureMode": {
+                  "type": "string",
+                  "description": "Concrete state + input → wrong outcome; max 2000 chars"
+                },
+                "evidence": {
+                  "type": "string",
+                  "description": "Quoted code or command output; max 4000 chars"
+                },
+                "classKey": {
+                  "description": "Bug class shared by other instances; max 80 chars",
+                  "type": "string"
+                },
+                "fingerprint": {
+                  "description": "Stable dedupe key; computed from lens/file/class/title when omitted",
+                  "type": "string"
+                },
+                "severityHint": {
+                  "description": "Initial severity hint, refined after refutation",
+                  "type": "string",
+                  "enum": [
+                    "blocker",
+                    "major",
+                    "minor",
+                    "nit"
+                  ]
+                },
+                "introducedByDiff": {
+                  "description": "False when the defect already exists on the base branch",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "lens",
+                "title",
+                "file",
+                "line",
+                "claim",
+                "failureMode",
+                "evidence"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ref",
+          "findings"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "review_refute",
+      "title": "Refute review candidates",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Review ref like CR1"
+          },
+          "verdicts": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "findingId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "refuter": {
+                  "type": "string",
+                  "description": "Skeptic identity; distinct refuters build a vote"
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "refuted",
+                    "plausible"
+                  ]
+                },
+                "reasoning": {
+                  "type": "string",
+                  "description": "What you tried and why the verdict follows; max 4000 chars"
+                },
+                "killStrategy": {
+                  "type": "string",
+                  "description": "Which kill strategy applied (or why none did); max 500 chars"
+                },
+                "evidence": {
+                  "type": "string",
+                  "description": "file:line, trace, test or command output; max 4000 chars"
+                },
+                "severity": {
+                  "description": "Severity after refutation",
+                  "type": "string",
+                  "enum": [
+                    "blocker",
+                    "major",
+                    "minor",
+                    "nit"
+                  ]
+                },
+                "oneFactThatWouldOverturn": {
+                  "description": "The single fact that would reverse this verdict",
+                  "type": "string"
+                },
+                "repro": {
+                  "description": "Repro command or trace; max 4000 chars",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "findingId",
+                "refuter",
+                "verdict",
+                "reasoning",
+                "killStrategy",
+                "evidence"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ref",
+          "verdicts"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "review_resolve",
+      "title": "Resolve surviving findings",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Review ref like CR1"
+          },
+          "resolutions": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "findingId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "fixed",
+                    "waived",
+                    "rejected",
+                    "duplicate",
+                    "pre-existing"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why this resolution is correct; max 2000 chars"
+                },
+                "evidence": {
+                  "description": "Fix proof (file:line or check name) or pre-existing proof; max 4000 chars",
+                  "type": "string"
+                },
+                "decisionRef": {
+                  "description": "D-number authorizing a waiver or a high-severity rejection",
+                  "type": "string"
+                },
+                "classScan": {
+                  "description": "How every other instance of the class was found/cleared; max 2000 chars",
+                  "type": "string"
+                },
+                "duplicateOf": {
+                  "description": "Original finding id",
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "findingId",
+                "status",
+                "reason"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ref",
+          "resolutions"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "review_check",
+      "title": "Record review checks",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Review ref like CR1"
+          },
+          "checks": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Check name; max 80 chars"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "Exact command; max 1000 chars"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Process exit code; 0 means green"
+                },
+                "outputDigest": {
+                  "description": "Hash of the full output; max 200 chars",
+                  "type": "string"
+                },
+                "outputExcerpt": {
+                  "description": "Short tail of the output; max 4000 chars",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "command",
+                "exitCode"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ref",
+          "checks"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "review_coverage",
+      "title": "Record review coverage",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Review ref like CR1"
+          },
+          "coverage": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "lens": {
+                  "type": "string",
+                  "enum": [
+                    "correctness",
+                    "security",
+                    "data",
+                    "tests",
+                    "conventions",
+                    "blast-radius",
+                    "over-engineering",
+                    "spec"
+                  ]
+                },
+                "filesExamined": {
+                  "type": "string",
+                  "description": "Files/directories examined; max 2000 chars"
+                },
+                "result": {
+                  "type": "string",
+                  "enum": [
+                    "clean",
+                    "findings"
+                  ]
+                },
+                "evidence": {
+                  "type": "string",
+                  "description": "How coverage was established; max 4000 chars"
+                }
+              },
+              "required": [
+                "lens",
+                "filesExamined",
+                "result",
+                "evidence"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ref",
+          "coverage"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "review_close",
+      "title": "Close the review gate",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Review ref like CR1"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "exempt",
+              "escalated"
+            ]
+          },
+          "headSha": {
+            "description": "Final reviewed commit SHA; max 200 chars",
+            "type": "string"
+          },
+          "diffHash": {
+            "description": "Final reviewed diff fingerprint",
+            "type": "string"
+          },
+          "summary": {
+            "description": "Verdict summary, required for exempt/escalated; max 4000 chars",
+            "type": "string"
+          },
+          "decisionRef": {
+            "description": "Decision that authorizes closing an escalated review as exempt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "review_get",
+      "title": "Get a review",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Review ref like CR1"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "review_list",
+      "title": "List reviews",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "hunting",
+              "refuting",
+              "fixing",
+              "verified",
+              "waived",
+              "escalated",
+              "abandoned"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "review_health",
+      "title": "Review gate health",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "harness_export",
       "title": "Export harness",
       "inputSchema": {
@@ -923,6 +1473,56 @@
                   },
                   "additionalProperties": {}
                 }
+              },
+              "reviews": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "review_findings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "review_refutations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "review_checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "review_coverage": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
               }
             },
             "required": [
@@ -937,7 +1537,12 @@
               "facts",
               "fact_confirmations",
               "entities",
-              "links"
+              "links",
+              "reviews",
+              "review_findings",
+              "review_refutations",
+              "review_checks",
+              "review_coverage"
             ]
           },
           "mode": {
@@ -983,6 +1588,10 @@
       "name": "session-log"
     },
     {
+      "uri": "harness://reviews",
+      "name": "reviews"
+    },
+    {
       "uri": "harness://plan",
       "name": "plan"
     }
@@ -995,6 +1604,10 @@
     {
       "uriTemplate": "harness://facts/{ref}",
       "name": "fact"
+    },
+    {
+      "uriTemplate": "harness://reviews/{ref}",
+      "name": "review"
     }
   ],
   "prompts": [
@@ -1034,6 +1647,66 @@
         {
           "name": "focus",
           "required": false,
+          "description": null
+        }
+      ]
+    },
+    {
+      "name": "code-review",
+      "arguments": [
+        {
+          "name": "taskId",
+          "required": true,
+          "description": null
+        },
+        {
+          "name": "lens",
+          "required": false,
+          "description": null
+        }
+      ]
+    },
+    {
+      "name": "review-refute",
+      "arguments": [
+        {
+          "name": "reviewRef",
+          "required": true,
+          "description": null
+        },
+        {
+          "name": "findingId",
+          "required": true,
+          "description": null
+        }
+      ]
+    },
+    {
+      "name": "review-triage",
+      "arguments": [
+        {
+          "name": "reviewRef",
+          "required": true,
+          "description": null
+        }
+      ]
+    },
+    {
+      "name": "review-recap",
+      "arguments": [
+        {
+          "name": "reviewRef",
+          "required": true,
+          "description": null
+        }
+      ]
+    },
+    {
+      "name": "task-completion",
+      "arguments": [
+        {
+          "name": "taskId",
+          "required": true,
           "description": null
         }
       ]

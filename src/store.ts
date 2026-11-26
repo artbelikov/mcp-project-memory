@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import type { ReviewGateMode } from './config.js'
 import { type Decision, DecisionsRepository } from './repositories/decisions.js'
 import {
   type FactHealthCounts,
@@ -9,6 +10,7 @@ import {
 import { GraphRepository } from './repositories/graph.js'
 import { type Handoff, HandoffRepository } from './repositories/handoff.js'
 import { PlanRepository, type PlanSectionSummary } from './repositories/plan.js'
+import { type ReviewOverview, ReviewsRepository } from './repositories/reviews.js'
 import { type SessionLogEntry, SessionLogRepository } from './repositories/session-log.js'
 import {
   type NextReport,
@@ -28,10 +30,16 @@ export type HarnessStore = {
   plan: PlanRepository
   facts: FactsRepository
   graph: GraphRepository
+  reviews: ReviewsRepository
+  reviewGate: ReviewGateMode
 }
 
-export function createHarnessStore(db: DatabaseSync): HarnessStore {
+export function createHarnessStore(
+  db: DatabaseSync,
+  options: { reviewGate?: ReviewGateMode } = {},
+): HarnessStore {
   const graph = new GraphRepository(db)
+  const reviewGate = options.reviewGate ?? 'enforce'
   return {
     db,
     tasks: new TasksRepository(db),
@@ -41,6 +49,8 @@ export function createHarnessStore(db: DatabaseSync): HarnessStore {
     plan: new PlanRepository(db),
     graph,
     facts: new FactsRepository(db, graph),
+    reviews: new ReviewsRepository(db, reviewGate),
+    reviewGate,
   }
 }
 
@@ -57,6 +67,7 @@ export type Overview = {
   recentSessionLog: SessionLogEntry[]
   plan: { sections: number; updatedAt: string | null }
   facts: FactSummary & { health: FactHealthCounts }
+  reviews: ReviewOverview
 }
 
 export function buildOverview(store: HarnessStore): Overview {
@@ -89,6 +100,7 @@ export function buildOverview(store: HarnessStore): Overview {
     recentSessionLog: store.sessionLog.list({ limit: 3 }),
     plan: { sections: sections.length, updatedAt: planUpdatedAt },
     facts: { ...store.facts.summary(), health: store.facts.health().counts },
+    reviews: store.reviews.summary(),
   }
 }
 

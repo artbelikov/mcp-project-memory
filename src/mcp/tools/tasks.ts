@@ -1,8 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { HarnessError } from '../../errors.js'
 import { TASK_STATUSES, type TaskStatus } from '../../repositories/tasks.js'
 import type { HarnessStore } from '../../store.js'
-import { MAX_SPEC_LENGTH, MAX_TITLE_LENGTH } from '../../util.js'
+import { MAX_REVIEW_HEAD_LENGTH, MAX_SPEC_LENGTH, MAX_TITLE_LENGTH } from '../../util.js'
 import { asToolResult, guard } from '../support.js'
 
 const idSchema = z
@@ -20,6 +21,16 @@ const blockedReasonSchema = z
   .string()
   .describe('Required when status is "blocked"; cleared automatically when leaving blocked')
 const statusSchema = z.enum(TASK_STATUSES)
+const headShaSchema = z
+  .string()
+  .describe(
+    `Reviewed commit SHA used to prove the review matches the code being completed; max ${MAX_REVIEW_HEAD_LENGTH} characters`,
+  )
+const diffHashSchema = z
+  .string()
+  .describe(
+    `Reviewed diff fingerprint used to prove the worktree matches the review; max ${MAX_REVIEW_HEAD_LENGTH} characters`,
+  )
 
 export function registerTaskTools(server: McpServer, store: HarnessStore): void {
   server.registerTool(
@@ -56,7 +67,10 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
       inputSchema: { id: idSchema },
       annotations: { readOnlyHint: true },
     },
-    guard((args: { id: string }) => asToolResult(store.tasks.detail(args.id))),
+    guard((args: { id: string }) => {
+      const detail = store.tasks.detail(args.id)
+      return asToolResult({ ...detail, review: store.reviews.summaryForTask(args.id) })
+    }),
   )
 
   server.registerTool(
@@ -80,7 +94,15 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
         spec?: string
         status?: TaskStatus
         blockedReason?: string
-      }) => asToolResult(store.tasks.create(args)),
+      }) => {
+        if (args.status === 'done' && store.reviewGate === 'enforce') {
+          throw new HarnessError(
+            'review-required',
+            'new tasks cannot be created as done under the review gate; create it as todo or in-progress, run the review, then complete it',
+          )
+        }
+        return asToolResult(store.tasks.create(args))
+      },
     ),
   )
 
@@ -89,13 +111,15 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
     {
       title: 'Update task',
       description:
-        'Update a task partially. Status transitions are free: todo → in-progress → done, anything → blocked (then `blockedReason` is required and cleared automatically when leaving blocked); done/cancelled can be reopened. updated_at is stamped for you. Flip status here at every state change during the session, then finish with session_log_add and handoff_set before ending.',
+        'Update a task partially. Status transitions are free: todo → in-progress → done, anything → blocked (then `blockedReason` is required and cleared automatically when leaving blocked); done/cancelled can be reopened (reopening a done task invalidates its review and forces a new round). updated_at is stamped for you. Under the review gate, `done` also requires the reviewed `headSha` (and `diffHash` when the review recorded one). Flip status here at every state change during the session, then finish with session_log_add and handoff_set before ending.',
       inputSchema: {
         id: idSchema,
         title: titleSchema.optional(),
         spec: specSchema.optional(),
         status: statusSchema.optional(),
         blockedReason: blockedReasonSchema.optional(),
+        headSha: headShaSchema.optional(),
+        diffHash: diffHashSchema.optional(),
       },
     },
     guard(
@@ -105,9 +129,24 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
         spec?: string
         status?: TaskStatus
         blockedReason?: string
+        headSha?: string
+        diffHash?: string
       }) => {
-        const { id, ...patch } = args
-        return asToolResult(store.tasks.update(id, patch))
+        const { id, headSha, diffHash, ...patch } = args
+        const existing = store.tasks.get(id)
+        if (patch.status === 'done' && existing.status !== 'done') {
+          store.reviews.assertCanComplete(id, headSha, diffHash)
+        }
+        const updated = store.tasks.update(id, patch)
+        if (
+          existing.status === 'done' &&
+          patch.status !== undefined &&
+          patch.status !== 'done' &&
+          patch.status !== 'cancelled'
+        ) {
+          store.reviews.reopen(id)
+        }
+        return asToolResult(updated)
       },
     ),
   )

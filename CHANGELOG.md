@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-26
+
+### Added
+
+- **Adversarial code review gate**: `review_start`, `review_record_findings`, `review_refute`,
+  `review_resolve`, `review_check`, `review_coverage`, `review_close`, `review_get`,
+  `review_list`, and `review_health` — a per-task hunt → refute → fix → re-review → verify
+  state machine capped at three rounds.
+- `task_update(done)` now refuses completion without a verified review at the same `headSha`
+  (and `diffHash` when recorded), or an explicit exempt/escalated review, and
+  `task_create(status:"done")` is refused under the gate. Reopening a done task invalidates
+  its review and forces a new round. `HARNESS_REVIEW_GATE=enforce|warn|off` (default
+  `enforce`) controls the policy.
+- Separate refutation phase: every candidate needs `file:line`, a claim, a concrete failure
+  mode and evidence; skeptics see the claim/evidence only; blockers/majors need two
+  confirmations; refuted candidates never consume fix effort.
+- Convergence controls: fingerprints dedupe findings across rounds, fixes require a later
+  re-review round, current-round checks and per-lens coverage are required before close, and
+  round 4 is refused in favour of escalation.
+- Risk tiers derived from `changedPaths`/`linesChanged` (low/medium/high/exempt) with
+  required lens coverage; waiver/rejection requires a recorded decision where risk demands it.
+- MCP prompts `code-review`, `review-refute`, `review-triage`, `review-recap`, and
+  `task-completion`; `session-start` now includes the gate reminder.
+- Resources `harness://reviews` and `harness://reviews/{ref}`; `overview` gained a `reviews`
+  block and `review_health` reports open/stale reviews, unrefuted findings, waivers without
+  decisions, done-without-review tasks and coverage gaps.
+- Migration 4: `reviews`, `review_findings`, `review_refutations`, `review_checks`,
+  `review_coverage`, plus the `tasks_ad_reviews` cleanup trigger.
+- `harness_export` / `harness_import` carry the review tables; the dump schema version is 4.
+
+### Changed
+
+- `task_get` and `harness://tasks/{id}` include a compact `review` summary.
+- Work-planning skill gained the **red-team gate** section and an updated definition of done.
+
 ## [0.2.0] - 2026-11-16
 
 ### Added

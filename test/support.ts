@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/sdk/types.js'
+import type { ReviewGateMode } from '../src/config.js'
 import { closeDatabase, openDatabase } from '../src/db/database.js'
 import { buildHarnessServer } from '../src/mcp/server.js'
 import { createHarnessStore, type HarnessStore } from '../src/store.js'
@@ -21,10 +22,12 @@ export type TestHarness = {
   dispose: () => Promise<void>
 }
 
-export async function createTestHarness(): Promise<TestHarness> {
+export async function createTestHarness(
+  options: { reviewGate?: ReviewGateMode } = {},
+): Promise<TestHarness> {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-project-memory-'))
   const db: DatabaseSync = openDatabase(path.join(dataDir, 'harness.db'))
-  const store = createHarnessStore(db)
+  const store = createHarnessStore(db, { reviewGate: options.reviewGate ?? 'off' })
   const server = buildHarnessServer(store)
   const client = new Client({ name: 'test-client', version: '0.0.0' })
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()

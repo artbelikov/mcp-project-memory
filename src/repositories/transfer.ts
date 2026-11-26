@@ -17,6 +17,11 @@ export const DUMP_TABLES = [
   'fact_confirmations',
   'entities',
   'links',
+  'reviews',
+  'review_findings',
+  'review_refutations',
+  'review_checks',
+  'review_coverage',
 ] as const
 
 export type DumpTable = (typeof DUMP_TABLES)[number]
@@ -38,6 +43,11 @@ export type ImportResult = {
 }
 
 const DELETE_ORDER: readonly DumpTable[] = [
+  'review_refutations',
+  'review_coverage',
+  'review_checks',
+  'review_findings',
+  'reviews',
   'links',
   'fact_confirmations',
   'facts',
@@ -61,6 +71,11 @@ const INSERT_ORDER: readonly DumpTable[] = [
   'fact_confirmations',
   'entities',
   'links',
+  'reviews',
+  'review_findings',
+  'review_refutations',
+  'review_checks',
+  'review_coverage',
 ]
 
 const COLUMN_PATTERN = /^[a-z_][a-z0-9_]*$/
@@ -87,6 +102,11 @@ export function exportHarness(db: DatabaseSync): HarnessDump {
     fact_confirmations: rows('SELECT * FROM fact_confirmations ORDER BY id'),
     entities: rows('SELECT * FROM entities ORDER BY id'),
     links: rows('SELECT * FROM links ORDER BY created_at, src_kind, src_id, rel'),
+    reviews: rows('SELECT * FROM reviews ORDER BY id'),
+    review_findings: rows('SELECT * FROM review_findings ORDER BY id'),
+    review_refutations: rows('SELECT * FROM review_refutations ORDER BY id'),
+    review_checks: rows('SELECT * FROM review_checks ORDER BY id'),
+    review_coverage: rows('SELECT * FROM review_coverage ORDER BY id'),
   }
 }
 

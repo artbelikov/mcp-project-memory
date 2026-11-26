@@ -7,11 +7,12 @@ description: >
   probes, produce a plan and a session-ready task breakdown with dependencies, and keep
   cross-session progress tracking. Everything persists through the project-memory MCP
   server (plan sections, task board with dependency graph, decisions log, handoff block,
-  session log, and a knowledge base of facts linked into a project graph) — the skill is
-  the method, the MCP server is the state; together they make any repo AI-session-ready.
-  Use when starting a new project/feature, when the user asks for a plan, roadmap, or
-  decomposition into AI sessions, when requirements need a validation or reiteration
-  pass, or when tracking work across sessions.
+  session log, a knowledge base of facts linked into a project graph, and a mandatory
+  adversarial code-review gate at task completion) — the skill is the method, the MCP
+  server is the state; together they make any repo AI-session-ready. Use when starting a
+  new project/feature, when the user asks for a plan, roadmap, or decomposition into AI
+  sessions, when requirements need a validation or reiteration pass, or when tracking work
+  across sessions.
 ---
 
 # Work planning & task management
@@ -88,7 +89,8 @@ order): `requirements` (from Phase 0), `verified-facts`, `scope`, `architecture`
 8. **schedule** — day-by-day or sequence table mapped to task IDs.
 9. **deployment** — concrete target config (Dockerfile/nginx/env/healthz), not vibes.
 10. **risks** — risk → mitigation; include schedule risk and data-privacy risk.
-11. **definition-of-done** — observable demo script + delivery checklist.
+11. **definition-of-done** — observable demo script, delivery checklist, and the red-team
+    gate (project checks green + review verified at the shipped head).
 
 Rules: scope grows → record as a decision, don't silently absorb; budget from the
 deadline backwards; every quality practice must name the phase that pays for it.
@@ -99,8 +101,8 @@ deadline backwards; every quality practice must name the phase that pays for it.
   **Goal**, **Scope** (files), **AC** (acceptance criteria — concrete, testable,
   behavior-first for anything clickable).
 - Record the global rules once as decisions: stack pins, per-task gates ("lint /
-  typecheck / test / build green + docs updated before ending"), secrets never committed,
-  centralized strings, no stray comments.
+  typecheck / test / build green + review closed + docs updated before ending"), secrets
+  never committed, centralized strings, no stray comments.
 - Wire the sequence with `task_set_deps`. Sessions run strictly sequentially by default
   (one writer of the store); mark genuinely parallelizable pairs only if coordination is
   defined.
@@ -130,6 +132,55 @@ Get one **fresh-context review** first: a reviewer spawned with **no conversatio
    (a waiver is itself a decision). Re-run the gate after any Phase-5 pass that
    materially changed the plan.
 
+## Red-team gate — mandatory code review before task completion
+
+A task is not done when the code compiles; it is done when the diff has survived an
+adversarial review and the fixes have been re-reviewed. The gate is the code-side sibling
+of the goldfish gate: same fresh-context principle, but the reviewer hunts the diff and a
+separate skeptic tries to kill every finding before it consumes fix effort.
+
+The server owns the state machine (`review_start` → `review_record_findings` →
+`review_refute` → `review_resolve` → `review_check`/`review_coverage` → `review_close`),
+and `task_update(status:"done")` refuses to complete without a verified review at the
+same `headSha`. The prompts carry the reviewer discipline: `code-review` (hunter brief),
+`review-refute` (one candidate, claim + evidence only), `review-triage` (fix survivors),
+`review-recap` (report), `task-completion` (the whole ritual).
+
+1. **Oracle before code.** `review_start` with the task's acceptance criteria quoted into
+   `oracle` (defaults to the task spec), plus the base/head, diff fingerprint, changed paths
+   and risk tier.
+   If the spec has no testable acceptance criteria, fix the task before reviewing it.
+2. **Hunt with fresh context.** Spawn finder subagents with no conversation history, one
+   lens each. Record every suspicion as a candidate: `file:line`, one-sentence claim, a
+   concrete failure mode (state + input → wrong outcome), quoted evidence. No severity, no
+   fixes, no plausibility filter yet.
+3. **Refute every candidate.** A separate skeptic sees the claim and evidence, not the
+   finder's reasoning. It tries to kill the finding: upstream guard, unreachable path,
+   existing test, misread line, author's best rebuttal. Framework/ORM claims are settled by
+   running code. Blockers/majors need two confirming refuters; one confirmation leaves the
+   finding `plausible` so the safe fix can still proceed. Refute all-clears too.
+4. **Fix only survivors.** Confirmed and plausible findings enter the fix queue. Fix the
+   class, not the line: pass `classScan` for blocker/major fixes. Refuted findings are
+   closed with evidence and never fixed. A waiver is a `decision_append` first, then
+   `review_resolve` with the D-ref; a high-severity rejection needs a decision too.
+5. **Re-review the delta.** After fixes, `review_start` the next round (max 3), re-hunt the
+   changed areas plus unresolved findings, and record current-round `review_check`s and
+   per-lens `review_coverage`. Fingerprints prevent re-reporting old findings. A fix
+   recorded in round N cannot be verified by closing round N.
+6. **Coverage makes clean credible.** Low risk needs correctness coverage; medium adds
+   tests; high adds security. “No findings” without a coverage row is not a result.
+7. **Close at the shipped head.** `review_close` requires every candidate answered, fixes
+   re-reviewed, latest checks green, required lenses covered, and the reviewed head; then
+   `task_update(done, headSha, diffHash)` with the same values. If round 3 still has a
+   blocker, escalate
+   with a decision or split the task — do not loop.
+8. **Exempt only explicitly.** Docs/config/investigation tasks still get a light review or
+   an `exempt` close with a written reason; exempting a medium/high-risk review needs a
+   decision too. Nothing is silently skipped. The gate is a
+   commitment and audit artifact, not a security boundary: the server cannot prove a
+   reviewer ran, so the evidence shape (head, checks, coverage, refutation votes) is what
+   makes fabrication more expensive than reviewing.
+
 ## Design docs in the repo (spec bridge — inputs in, state out)
 
 An approved design document (`docs/designs/*.md`, an exported `design_draft.md`, a PR plan)
@@ -154,9 +205,11 @@ is an **input, never the tracker**:
    knowledge the moment it is discovered — binding rules/choices via `decision_append`,
    observations/gotchas/API behaviors via `fact_add` **with links** to the task and the
    entity they concern; keep the plan true (`plan_put`).
-3. **End**: `session_log_add` (one condensed line), refresh `handoff_set` sections
-   (`last-completed`, `next-up`, and `blockers`/`follow-ups` when relevant), flip the
-   task status. The delta is recorded even if the session dies right after.
+3. **End**: close the red-team gate (`review_close` at the shipped head), then
+   `session_log_add` (one condensed line including the review ref/verdict), refresh
+   `handoff_set` sections (`last-completed`, `next-up`, and `blockers`/`follow-ups` when
+   relevant), flip the task status. The delta is recorded even if the session dies right
+   after.
 4. The logs are append-only by API — never rewrite history anywhere else either.
 5. If the repo also wants a human-readable pointer, keep a minimal `AGENTS.md` that says
    only: read `overview`/`handoff`/`task_next` before starting; update them before
@@ -270,8 +323,12 @@ it is part of the definition of done, not an afterthought.
   delegate it; the knowledge graph here links knowledge to entities, it is not a code index.
 - Reviewing your own plan in the same conversation that wrote it — without fresh eyes the
   review is ceremony; run the goldfish gate with no conversation history.
-- Letting an approved design doc live only in `docs/` while the store's plan stays stale,
-  or waiving a review blocker without recording the waiver as a decision.
+- Marking a task done without a closed review, or letting a confirmed/plausible blocker
+  disappear without a fix or a recorded waiver decision.
+- Fixing refuted findings, trusting one reviewer pass, or closing a review after fixes
+  without a later re-review round — that is how noise and false negatives both survive.
+- Running review rounds forever instead of fixing the class and escalating at the cap;
+  round 4 is a signal to split the task or change the approach, not to try again.
 - "Minimal UI" that grows features because they were easy — scope freeze means freeze.
 - Writing per-task delivery/acceptance reports as markdown files when the store is connected — the store is the report (`session_log_add`, `fact_add` linked to the task, `handoff_set`); only AC-named, script-generated artifacts belong on disk.
 

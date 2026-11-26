@@ -9,6 +9,7 @@ import { registerKnowledgeTools } from './tools/knowledge.js'
 import { registerPlanTools } from './tools/plan.js'
 import { registerPortabilityTools } from './tools/portability.js'
 import { registerProgressTools } from './tools/progress.js'
+import { registerReviewTools } from './tools/reviews.js'
 import { registerTaskTools } from './tools/tasks.js'
 
 export function buildHarnessServer(store: HarnessStore): McpServer {
@@ -19,6 +20,7 @@ export function buildHarnessServer(store: HarnessStore): McpServer {
   registerPlanTools(server, store)
   registerInsightTools(server, store)
   registerKnowledgeTools(server, store)
+  registerReviewTools(server, store)
   registerPortabilityTools(server, store)
   registerHarnessPrompts(server, store)
   registerHarnessResources(server, store)

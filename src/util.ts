@@ -3,6 +3,7 @@ import { HarnessError } from './errors.js'
 export const TASK_REF_PATTERN = /^T(\d{1,4})$/
 export const DECISION_REF_PATTERN = /^D(\d{1,4})$/
 export const FACT_REF_PATTERN = /^F(\d{1,6})$/
+export const REVIEW_REF_PATTERN = /^CR(\d{1,4})$/
 export const TASK_ID_PATTERN = /^(T\d{1,4}|[a-z][a-z0-9-]{0,47})$/
 export const HANDOFF_SECTION_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9 ./-]{0,47}$/
 export const PLAN_SECTION_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
@@ -30,6 +31,26 @@ export const MAX_ENTITY_NAME_LENGTH = 120
 export const MAX_LINK_REL_LENGTH = 40
 export const MAX_NEIGHBOURHOOD_DEPTH = 5
 export const MAX_NEIGHBOURHOOD_NODES = 200
+export const MAX_REVIEW_ORACLE_LENGTH = 20_000
+export const MAX_REVIEW_SUMMARY_LENGTH = 4_000
+export const MAX_REVIEW_PATH_LENGTH = 500
+export const MAX_REVIEW_HEAD_LENGTH = 200
+export const MAX_REVIEW_CHANGED_PATHS = 500
+export const MAX_FINDING_TITLE_LENGTH = 200
+export const MAX_FINDING_CLAIM_LENGTH = 1_000
+export const MAX_FINDING_FAILURE_MODE_LENGTH = 2_000
+export const MAX_FINDING_EVIDENCE_LENGTH = 4_000
+export const MAX_FINDING_CLASS_KEY_LENGTH = 80
+export const MAX_FINDING_RESOLUTION_LENGTH = 2_000
+export const MAX_FINDING_CLASS_SCAN_LENGTH = 2_000
+export const MAX_REFUTATION_REASONING_LENGTH = 4_000
+export const MAX_REFUTATION_KILL_STRATEGY_LENGTH = 500
+export const MAX_REFUTATION_REPRO_LENGTH = 4_000
+export const MAX_CHECK_NAME_LENGTH = 80
+export const MAX_CHECK_COMMAND_LENGTH = 1_000
+export const MAX_CHECK_OUTPUT_LENGTH = 4_000
+export const MAX_CHECK_DIGEST_LENGTH = 200
+export const MAX_COVERAGE_FILES_LENGTH = 2_000
 
 export function nowIso(): string {
   return new Date().toISOString()

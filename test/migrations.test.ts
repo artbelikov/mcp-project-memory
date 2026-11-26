@@ -64,7 +64,18 @@ describe('migrations', () => {
     ).map((row) => row.id)
     expect(applied).toEqual(MIGRATIONS.map((migration) => migration.id))
 
-    for (const table of ['facts', 'facts_fts', 'entities', 'links', 'fact_confirmations']) {
+    for (const table of [
+      'facts',
+      'facts_fts',
+      'entities',
+      'links',
+      'fact_confirmations',
+      'reviews',
+      'review_findings',
+      'review_refutations',
+      'review_checks',
+      'review_coverage',
+    ]) {
       expect(exists(db, 'table', table)).toBe(true)
     }
     for (const trigger of [
@@ -76,6 +87,7 @@ describe('migrations', () => {
       'tasks_ad_facts_task',
       'facts_ins_supersedes_format',
       'facts_upd_supersedes_format',
+      'tasks_ad_reviews',
     ]) {
       expect(exists(db, 'trigger', trigger)).toBe(true)
     }

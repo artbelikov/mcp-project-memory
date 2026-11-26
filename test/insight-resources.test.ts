@@ -44,6 +44,16 @@ const TOOL_NAMES = [
   'fact_confirm',
   'fact_health',
   'entity_merge',
+  'review_start',
+  'review_record_findings',
+  'review_refute',
+  'review_resolve',
+  'review_check',
+  'review_coverage',
+  'review_close',
+  'review_get',
+  'review_list',
+  'review_health',
   'harness_export',
   'harness_import',
 ] as const
@@ -68,6 +78,9 @@ describe('tool catalogue', () => {
       'fact_get',
       'fact_neighbourhood',
       'fact_health',
+      'review_get',
+      'review_list',
+      'review_health',
       'harness_export',
     ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint).toBe(true)
@@ -100,6 +113,7 @@ describe('resources', () => {
         'harness://decisions',
         'harness://facts',
         'harness://session-log',
+        'harness://reviews',
         'harness://plan',
       ].sort(),
     )
@@ -112,6 +126,7 @@ describe('resources', () => {
     expect(await resourceText(harness, 'harness://decisions')).toEqual({ decisions: [] })
     expect(await resourceText(harness, 'harness://facts')).toEqual({ facts: [] })
     expect(await resourceText(harness, 'harness://session-log')).toEqual({ entries: [] })
+    expect(await resourceText(harness, 'harness://reviews')).toEqual({ reviews: [] })
     expect(await resourceMarkdown(harness, 'harness://plan')).toBe('# Plan\n\nNo sections yet.\n')
   })
 

@@ -149,7 +149,116 @@ const CONFIRMATIONS: Migration = {
   ],
 }
 
-export const MIGRATIONS: readonly Migration[] = [BASELINE, KNOWLEDGE, CONFIRMATIONS]
+const REVIEWS: Migration = {
+  id: 4,
+  statements: [
+    `CREATE TABLE reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ref TEXT NOT NULL UNIQUE,
+      task_id TEXT NOT NULL UNIQUE,
+      round INTEGER NOT NULL DEFAULT 1,
+      phase TEXT NOT NULL DEFAULT 'hunting' CHECK (phase IN ('hunting', 'refuting', 'fixing', 'verified', 'waived', 'escalated', 'abandoned')),
+      risk TEXT NOT NULL DEFAULT 'medium' CHECK (risk IN ('low', 'medium', 'high', 'exempt')),
+      base_ref TEXT,
+      base_sha TEXT,
+      head_sha TEXT,
+      diff_hash TEXT,
+      changed_paths TEXT NOT NULL DEFAULT '[]',
+      oracle TEXT NOT NULL DEFAULT '',
+      reviewer TEXT,
+      fresh_context INTEGER NOT NULL DEFAULT 0,
+      summary TEXT,
+      verdict TEXT CHECK (verdict IS NULL OR verdict IN ('verified', 'verified-with-waivers', 'exempt', 'escalated')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      closed_at TEXT
+    )`,
+    'CREATE INDEX idx_reviews_task_id ON reviews (task_id)',
+    `CREATE TABLE review_findings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      review_ref TEXT NOT NULL REFERENCES reviews (ref) ON DELETE CASCADE,
+      round INTEGER NOT NULL,
+      seq INTEGER NOT NULL,
+      fingerprint TEXT NOT NULL,
+      class_key TEXT,
+      lens TEXT NOT NULL CHECK (lens IN ('correctness', 'security', 'data', 'tests', 'conventions', 'blast-radius', 'over-engineering', 'spec')),
+      severity TEXT NOT NULL DEFAULT 'minor' CHECK (severity IN ('blocker', 'major', 'minor', 'nit')),
+      status TEXT NOT NULL DEFAULT 'candidate' CHECK (status IN ('candidate', 'confirmed', 'refuted', 'plausible', 'fixed', 'waived', 'rejected', 'duplicate', 'pre-existing')),
+      title TEXT NOT NULL,
+      file TEXT NOT NULL,
+      line INTEGER NOT NULL,
+      claim TEXT NOT NULL,
+      failure_mode TEXT NOT NULL,
+      evidence TEXT NOT NULL,
+      introduced_by_diff INTEGER NOT NULL DEFAULT 1,
+      confidence REAL NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
+      refuter TEXT,
+      rebuttal TEXT,
+      votes_for INTEGER NOT NULL DEFAULT 0,
+      votes_against INTEGER NOT NULL DEFAULT 0,
+      one_fact_that_would_overturn TEXT,
+      class_scan TEXT,
+      resolution TEXT,
+      decision_ref TEXT,
+      fixed_round INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      closed_at TEXT,
+      UNIQUE (review_ref, fingerprint)
+    )`,
+    'CREATE INDEX idx_review_findings_review ON review_findings (review_ref, seq)',
+    'CREATE INDEX idx_review_findings_status ON review_findings (review_ref, status)',
+    `CREATE TABLE review_refutations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      review_ref TEXT NOT NULL REFERENCES reviews (ref) ON DELETE CASCADE,
+      finding_id INTEGER NOT NULL REFERENCES review_findings (id) ON DELETE CASCADE,
+      round INTEGER NOT NULL,
+      refuter TEXT NOT NULL,
+      verdict TEXT NOT NULL CHECK (verdict IN ('confirmed', 'refuted', 'plausible')),
+      reasoning TEXT NOT NULL,
+      kill_strategy TEXT NOT NULL,
+      evidence TEXT NOT NULL,
+      severity TEXT CHECK (severity IS NULL OR severity IN ('blocker', 'major', 'minor', 'nit')),
+      one_fact_that_would_overturn TEXT,
+      repro TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE (finding_id, refuter, round)
+    )`,
+    'CREATE INDEX idx_review_refutations_finding ON review_refutations (finding_id, round)',
+    `CREATE TABLE review_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      review_ref TEXT NOT NULL REFERENCES reviews (ref) ON DELETE CASCADE,
+      round INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      command TEXT NOT NULL,
+      exit_code INTEGER NOT NULL,
+      output_digest TEXT,
+      output_excerpt TEXT,
+      created_at TEXT NOT NULL
+    )`,
+    'CREATE INDEX idx_review_checks_review ON review_checks (review_ref, round, name)',
+    `CREATE TABLE review_coverage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      review_ref TEXT NOT NULL REFERENCES reviews (ref) ON DELETE CASCADE,
+      round INTEGER NOT NULL,
+      lens TEXT NOT NULL CHECK (lens IN ('correctness', 'security', 'data', 'tests', 'conventions', 'blast-radius', 'over-engineering', 'spec')),
+      files_examined TEXT NOT NULL,
+      result TEXT NOT NULL CHECK (result IN ('clean', 'findings')),
+      evidence TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (review_ref, round, lens)
+    )`,
+    'CREATE INDEX idx_review_coverage_review ON review_coverage (review_ref, round)',
+    `CREATE TRIGGER tasks_ad_reviews AFTER DELETE ON tasks BEGIN
+      UPDATE reviews
+      SET phase = 'abandoned', closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE task_id = old.id AND phase NOT IN ('verified', 'waived', 'escalated', 'abandoned');
+    END`,
+  ],
+}
+
+export const MIGRATIONS: readonly Migration[] = [BASELINE, KNOWLEDGE, CONFIRMATIONS, REVIEWS]
 
 export function migrate(db: DatabaseSync): void {
   db.exec(

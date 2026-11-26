@@ -30,6 +30,15 @@ describe('resolveConfig', () => {
     const config = resolveConfig({ DATA_DIR: '   ' }, CWD)
     expect(config.dataDir).toBe(path.join(CWD, 'data'))
   })
+
+  it('defaults the review gate to enforce and honors off/warn', () => {
+    expect(resolveConfig({}, CWD).reviewGate).toBe('enforce')
+    expect(resolveConfig({ HARNESS_REVIEW_GATE: 'warn' }, CWD).reviewGate).toBe('warn')
+    expect(resolveConfig({ HARNESS_REVIEW_GATE: 'OFF' }, CWD).reviewGate).toBe('off')
+    expect(() => resolveConfig({ HARNESS_REVIEW_GATE: 'sideways' }, CWD)).toThrow(
+      /HARNESS_REVIEW_GATE/,
+    )
+  })
 })
 
 describe('util primitives', () => {

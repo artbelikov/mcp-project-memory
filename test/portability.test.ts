@@ -36,6 +36,8 @@ async function seedStore(): Promise<void> {
     links: [{ rel: 'affects', dst: 'entity:storage-layer' }],
   })
   await harness.ok('fact_confirm', { ref: 'F1', note: 're-observed' })
+  await harness.ok('review_start', { taskId: 'T1', risk: 'exempt' })
+  await harness.ok('review_close', { ref: 'CR1', verdict: 'exempt', summary: 'seeded review' })
 }
 
 async function dump(): Promise<HarnessDump> {
@@ -47,7 +49,7 @@ describe('harness_export', () => {
     await seedStore()
     const result = await dump()
     expect(result.format).toBe('mcp-project-memory')
-    expect(result.schemaVersion).toBe(3)
+    expect(result.schemaVersion).toBe(4)
     expect(result.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     expect(result.tasks).toHaveLength(2)
     expect(result.task_deps).toEqual([{ task_id: 'T2', depends_on: 'T1' }])
@@ -59,6 +61,8 @@ describe('harness_export', () => {
     expect(result.fact_confirmations).toHaveLength(1)
     expect(result.entities.map((entity) => entity.name)).toEqual(['storage-layer'])
     expect(result.links).toHaveLength(1)
+    expect(result.reviews).toHaveLength(1)
+    expect(result.review_checks).toHaveLength(0)
   })
 })
 
@@ -86,6 +90,7 @@ describe('harness_import', () => {
     expect(imported.mode).toBe('replace')
     expect(imported.inserted.tasks).toBe(2)
     expect(imported.inserted.facts).toBe(1)
+    expect(imported.inserted.reviews).toBe(1)
 
     const tasks = (await harness.ok('task_list', {})) as { tasks: { id: string }[] }
     expect(tasks.tasks.map((task) => task.id).sort()).toEqual(['T1', 'T2'])
@@ -153,7 +158,7 @@ describe('harness_import', () => {
         data: { ...result, schemaVersion: 999 },
         mode: 'replace',
       }),
-    ).toBe('invalid: dump schema version 999 does not match this server (3)')
+    ).toBe('invalid: dump schema version 999 does not match this server (4)')
 
     expect(
       await harness.err('harness_import', {

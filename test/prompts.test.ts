@@ -23,10 +23,15 @@ describe('prompts', () => {
   it('exposes the session-start, plan, review and drift prompts', async () => {
     const list = await harness.client.listPrompts()
     expect(list.prompts.map((prompt) => prompt.name).sort()).toEqual([
+      'code-review',
       'drift-report',
       'plan-from-requirements',
       'plan-review',
+      'review-recap',
+      'review-refute',
+      'review-triage',
       'session-start',
+      'task-completion',
     ])
   })
 
@@ -42,6 +47,61 @@ describe('prompts', () => {
     expect(text).toContain('fact_search')
     expect(text).toContain('storage layer')
     expect(text).toContain('0 fact(s)')
+  })
+
+  it('renders the review prompts from stored state', async () => {
+    await harness.ok('task_create', {
+      id: 'T0',
+      title: 'review me',
+      spec: 'AC: GET /x returns 200',
+    })
+    await harness.ok('task_update', { id: 'T0', status: 'in-progress' })
+    const review = (await harness.ok('review_start', {
+      taskId: 'T0',
+      risk: 'low',
+      headSha: 'abc123',
+      oracle: 'AC: GET /x returns 200',
+      reviewer: 'finder-1',
+    })) as { ref: string }
+    const recorded = (await harness.ok('review_record_findings', {
+      ref: review.ref,
+      findings: [
+        {
+          lens: 'correctness',
+          title: 'wrong status',
+          file: 'src/x.ts',
+          line: 7,
+          claim: 'returns 500 instead of 200',
+          failureMode: 'GET /x returns 500',
+          evidence: 'res.status(500)',
+        },
+      ],
+    })) as { recorded: { id: number }[] }
+    const findingId = recorded.recorded[0]?.id
+    expect(findingId).toBeDefined()
+
+    const code = promptText(
+      await harness.client.getPrompt({ name: 'code-review', arguments: { taskId: 'T0' } }),
+    )
+    expect(code).toContain('fresh-context code reviewer')
+    expect(code).toContain('AC: GET /x returns 200')
+    expect(code).toContain('review_record_findings')
+
+    const refute = promptText(
+      await harness.client.getPrompt({
+        name: 'review-refute',
+        arguments: { reviewRef: review.ref, findingId: String(findingId) },
+      }),
+    )
+    expect(refute).toContain('returns 500 instead of 200')
+    expect(refute).toContain('review_refute')
+    expect(refute).toContain('Upstream guard')
+
+    const completion = promptText(
+      await harness.client.getPrompt({ name: 'task-completion', arguments: { taskId: 'T0' } }),
+    )
+    expect(completion).toContain('review_close')
+    expect(completion).toContain('headSha')
   })
 
   it('renders the planning prompt around the deliverable', async () => {

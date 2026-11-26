@@ -50,7 +50,10 @@ export function registerHarnessResources(server: McpServer, store: HarnessStore)
       }
       const id = decodeURIComponent(match[1] ?? '')
       try {
-        return asResource(uri.toString(), 'application/json', store.tasks.detail(id))
+        return asResource(uri.toString(), 'application/json', {
+          ...store.tasks.detail(id),
+          review: store.reviews.summaryForTask(id),
+        })
       } catch (error) {
         throw wrapError(error)
       }
@@ -133,6 +136,48 @@ export function registerHarnessResources(server: McpServer, store: HarnessStore)
       asResource(uri.toString(), 'application/json', {
         entries: store.sessionLog.list({ limit: 200 }),
       }),
+  )
+
+  server.registerResource(
+    'reviews',
+    'harness://reviews',
+    {
+      title: 'Code reviews',
+      description:
+        'The adversarial review gate rows, newest first (up to 200): ref, task, round, phase, risk, verdict and head.',
+      mimeType: 'application/json',
+    },
+    (uri) =>
+      asResource(uri.toString(), 'application/json', {
+        reviews: store.reviews.list({ limit: 200 }),
+      }),
+  )
+
+  server.registerResource(
+    'review',
+    new ResourceTemplate('harness://reviews/{ref}', {
+      list: () => ({
+        resources: store.reviews.list({ limit: 200 }).map((review) => ({
+          uri: `harness://reviews/${review.ref}`,
+          name: `${review.ref} — ${review.taskId}`,
+          mimeType: 'application/json',
+        })),
+      }),
+    }),
+    {
+      title: 'Code review',
+      description:
+        'One review in full: findings with refutations, checks, coverage and the completion gate.',
+      mimeType: 'application/json',
+    },
+    (uri, variables) => {
+      const ref = String(variables.ref ?? '')
+      try {
+        return asResource(uri.toString(), 'application/json', store.reviews.detail(ref))
+      } catch (error) {
+        throw wrapError(error)
+      }
+    },
   )
 
   server.registerResource(

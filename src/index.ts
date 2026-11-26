@@ -21,7 +21,7 @@ async function main(): Promise<void> {
     shutdown()
     process.exit(0)
   })
-  const server = buildHarnessServer(createHarnessStore(db))
+  const server = buildHarnessServer(createHarnessStore(db, { reviewGate: config.reviewGate }))
   try {
     await server.connect(new StdioServerTransport())
   } catch (error) {
