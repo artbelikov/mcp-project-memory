@@ -51,6 +51,12 @@ export const MAX_CHECK_COMMAND_LENGTH = 1_000
 export const MAX_CHECK_OUTPUT_LENGTH = 4_000
 export const MAX_CHECK_DIGEST_LENGTH = 200
 export const MAX_COVERAGE_FILES_LENGTH = 2_000
+export const MAX_READINESS_GOAL_LENGTH = 500
+export const MAX_READINESS_ACCEPTANCE_LENGTH = 4_000
+export const MAX_READINESS_ITEMS = 20
+export const MAX_READINESS_SERVE_LENGTH = 120
+export const MAX_READINESS_OUT_OF_SCOPE_LENGTH = 500
+export const MAX_READINESS_COMMAND_LENGTH = 500
 
 export function nowIso(): string {
   return new Date().toISOString()

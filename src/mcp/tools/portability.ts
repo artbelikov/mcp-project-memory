@@ -17,6 +17,7 @@ const dumpSchema = z.object({
   exportedAt: z.string().optional(),
   tasks: z.array(dumpRow),
   task_deps: z.array(dumpRow),
+  readiness_checks: z.array(dumpRow),
   decisions: z.array(dumpRow),
   session_log: z.array(dumpRow),
   handoff_sections: z.array(dumpRow),
@@ -38,7 +39,7 @@ export function registerPortabilityTools(server: McpServer, store: HarnessStore)
     {
       title: 'Export harness',
       description:
-        'Dump the whole store as one JSON payload: format tag, schemaVersion, and every raw row of tasks, task_deps, decisions, session_log, handoff_sections, plan_sections, facts, fact_confirmations, entities, links, reviews, review_findings, review_refutations, review_checks and review_coverage. Read-only — use it for backups, for diffing two projects, or as the input of harness_import after moving the data. The schemaVersion must match the importing server.',
+        'Dump the whole store as one JSON payload: format tag, schemaVersion, and every raw row of tasks, task_deps, readiness_checks, decisions, session_log, handoff_sections, plan_sections, facts, fact_confirmations, entities, links, reviews, review_findings, review_refutations, review_checks and review_coverage. Read-only — use it for backups, for diffing two projects, or as the input of harness_import after moving the data. The schemaVersion must match the importing server.',
       annotations: { readOnlyHint: true },
     },
     guard(() => asToolResult(exportHarness(store.db))),

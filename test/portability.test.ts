@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { FactSearchHit } from '../src/repositories/facts.js'
+import type { ReadinessAssessment } from '../src/repositories/readiness.js'
 import type { HarnessDump } from '../src/repositories/transfer.js'
 import { createTestHarness, type TestHarness } from './support.js'
 
@@ -17,6 +18,14 @@ async function seedStore(): Promise<void> {
   await harness.ok('task_create', { id: 'T1', title: 'root', spec: 'seed spec' })
   await harness.ok('task_create', { id: 'T2', title: 'child' })
   await harness.ok('task_set_deps', { id: 'T2', dependsOn: ['T1'] })
+  await harness.ok('readiness_set', {
+    taskId: 'T1',
+    goal: 'seed the store',
+    acceptance: 'seed spec',
+    serves: ['T1'],
+    outOfScope: ['none'],
+    commands: ['pnpm test'],
+  })
   await harness.ok('decision_append', {
     title: 'seed decision',
     body: 'keep the store append-only',
@@ -49,10 +58,11 @@ describe('harness_export', () => {
     await seedStore()
     const result = await dump()
     expect(result.format).toBe('mcp-project-memory')
-    expect(result.schemaVersion).toBe(4)
+    expect(result.schemaVersion).toBe(5)
     expect(result.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     expect(result.tasks).toHaveLength(2)
     expect(result.task_deps).toEqual([{ task_id: 'T2', depends_on: 'T1' }])
+    expect(result.readiness_checks).toHaveLength(1)
     expect(result.decisions).toHaveLength(1)
     expect(result.session_log).toHaveLength(1)
     expect(result.handoff_sections).toHaveLength(1)
@@ -91,6 +101,18 @@ describe('harness_import', () => {
     expect(imported.inserted.tasks).toBe(2)
     expect(imported.inserted.facts).toBe(1)
     expect(imported.inserted.reviews).toBe(1)
+    expect(imported.inserted.readiness_checks).toBe(1)
+
+    const readiness = (await harness.ok('readiness_get', { taskId: 'T1' })) as ReadinessAssessment
+    expect(readiness.record).toMatchObject({
+      taskId: 'T1',
+      revision: 1,
+      goal: 'seed the store',
+      acceptance: 'seed spec',
+      serves: ['T1'],
+      commands: ['pnpm test'],
+    })
+    expect(readiness.canStart).toBe(true)
 
     const tasks = (await harness.ok('task_list', {})) as { tasks: { id: string }[] }
     expect(tasks.tasks.map((task) => task.id).sort()).toEqual(['T1', 'T2'])
@@ -126,6 +148,9 @@ describe('harness_import', () => {
       valid_to: null,
       created_at: '2026-01-01T00:00:00.000Z',
     })
+    const seedDrill = result.readiness_checks[0]
+    expect(seedDrill).toBeDefined()
+    result.readiness_checks.push({ ...(seedDrill ?? {}), id: 900 })
 
     const imported = (await harness.ok('harness_import', {
       data: result,
@@ -134,6 +159,8 @@ describe('harness_import', () => {
     expect(imported.inserted.facts).toBe(1)
     expect(imported.skipped.facts).toBe(1)
     expect(imported.skipped.tasks).toBe(2)
+    expect(imported.inserted.readiness_checks).toBe(0)
+    expect(imported.skipped.readiness_checks).toBe(2)
 
     const hits = (await harness.ok('fact_search', { query: 'imported note' })) as {
       facts: FactSearchHit[]
@@ -158,7 +185,7 @@ describe('harness_import', () => {
         data: { ...result, schemaVersion: 999 },
         mode: 'replace',
       }),
-    ).toBe('invalid: dump schema version 999 does not match this server (4)')
+    ).toBe('invalid: dump schema version 999 does not match this server (5)')
 
     expect(
       await harness.err('harness_import', {

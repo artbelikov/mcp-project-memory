@@ -27,6 +27,7 @@ describe('prompts', () => {
       'drift-report',
       'plan-from-requirements',
       'plan-review',
+      'readiness-brief',
       'review-recap',
       'review-refute',
       'review-triage',
@@ -192,5 +193,76 @@ describe('drift-report prompt', () => {
     expect(text).toContain('entity:storage-layer')
     expect(text).toContain('out of scope')
     expect(text).not.toContain('none: every fact')
+  })
+})
+
+describe('readiness-brief prompt', () => {
+  it('renders the task spec, requirement refs and the four sanity questions', async () => {
+    await harness.ok('task_create', {
+      id: 'T0',
+      title: 'health endpoint',
+      spec: 'AC1: GET /health returns 200',
+    })
+    await harness.ok('plan_put', {
+      id: 'requirements',
+      title: 'Requirements',
+      content: 'R1: the load balancer can poll /health',
+    })
+    await harness.ok('decision_append', { title: 'health route is public', body: 'no auth' })
+    await harness.ok('decision_append', { title: 'health route is cached', body: 'cache it' })
+    const result = await harness.client.getPrompt({
+      name: 'readiness-brief',
+      arguments: { taskId: 'T0' },
+    })
+    const text = promptText(result)
+    expect(text).toContain('AC1: GET /health returns 200')
+    expect(text).toContain('R1: the load balancer can poll /health')
+    expect(text).toContain('D1')
+    expect(text).toContain('- D2')
+    expect(text.indexOf('- D1')).toBeGreaterThan(text.indexOf('- D2'))
+    expect(text).toContain('What are we doing?')
+    expect(text).toContain('Is that ok?')
+    expect(text).toContain('Is that what we have to do?')
+    expect(text).toContain('Is this the way we do it?')
+    expect(text).toContain('readiness_set')
+    expect(text).toContain('not ready to start')
+  })
+
+  it('explains an unknown task instead of rendering a spec', async () => {
+    const result = await harness.client.getPrompt({
+      name: 'readiness-brief',
+      arguments: { taskId: 'Z9' },
+    })
+    expect(promptText(result)).toContain('does not exist')
+  })
+})
+
+describe('readiness-brief drill state', () => {
+  it('renders the valid and stale drill states', async () => {
+    await harness.ok('task_create', {
+      id: 'T0',
+      title: 'health',
+      spec: 'AC1: GET /health returns 200',
+    })
+    await harness.ok('readiness_set', {
+      taskId: 'T0',
+      goal: 'serve health',
+      acceptance: 'AC1: GET /health returns 200',
+      outOfScope: ['none'],
+      commands: ['pnpm test'],
+    })
+    const valid = promptText(
+      await harness.client.getPrompt({ name: 'readiness-brief', arguments: { taskId: 'T0' } }),
+    )
+    expect(valid).toContain('It matches the current spec.')
+
+    await harness.ok('task_update', {
+      id: 'T0',
+      spec: 'AC1: GET /health returns 200\nAC2: HEAD returns 200',
+    })
+    const stale = promptText(
+      await harness.client.getPrompt({ name: 'readiness-brief', arguments: { taskId: 'T0' } }),
+    )
+    expect(stale).toContain('does not match the current spec')
   })
 })

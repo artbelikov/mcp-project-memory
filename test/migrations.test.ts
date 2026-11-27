@@ -75,6 +75,7 @@ describe('migrations', () => {
       'review_refutations',
       'review_checks',
       'review_coverage',
+      'readiness_checks',
     ]) {
       expect(exists(db, 'table', table)).toBe(true)
     }
@@ -101,6 +102,28 @@ describe('migrations', () => {
     expect(count(db, 'SELECT COUNT(*) AS n FROM plan_sections')).toBe(1)
     expect(count(db, 'SELECT COUNT(*) AS n FROM handoff_sections')).toBe(1)
     expect(count(db, 'SELECT COUNT(*) AS n FROM session_log')).toBe(1)
+
+    const insertDrill = (revision: number | string): void => {
+      db.prepare(
+        `INSERT INTO readiness_checks
+          (task_id, revision, goal, acceptance, serves, out_of_scope, commands, spec_hash, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        'T1',
+        revision,
+        'g',
+        'seed spec',
+        '[]',
+        '["none"]',
+        '["pnpm test"]',
+        'a'.repeat(64),
+        '2026-01-01T00:00:00.000Z',
+      )
+    }
+    insertDrill(1)
+    expect(() => insertDrill(1)).toThrow(/UNIQUE constraint failed/)
+    expect(() => insertDrill('not-a-number')).toThrow(/CHECK constraint failed/)
+    expect(() => insertDrill(0)).toThrow(/CHECK constraint failed/)
 
     db.prepare(
       `INSERT INTO facts (ref, kind, title, body, origin, confidence, created_at)

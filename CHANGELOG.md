@@ -5,6 +5,45 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Readiness drill (entry gate)**: `readiness_set` records a pre-work brief-back — restated
+  `goal`, `acceptance` quoted verbatim from the task spec, `serves` (R/D/F/T refs that must
+  exist), explicit `outOfScope`, and the `commands` that will prove the work — and
+  `readiness_get` returns the latest revision plus the start gate. Revisions are append-only
+  and carry a spec hash, so editing the task makes the drill `readiness-stale`.
+- `task_update(status:"in-progress")` refuses to start a task without a valid drill under
+  `HARNESS_READINESS_GATE=enforce`; `task_create(status:"in-progress")` is refused too. The
+  gate re-checks an already in-progress task, so re-asserting in-progress cannot bypass a
+  missing or stale drill; a spec edit marks the drill stale and the next in-progress write
+  is refused until it is re-recorded. The gate defaults to `warn`, which counts
+  missing/stale drills per in-progress task in `overview`; `off` disables it.
+- `acceptance` must appear in the task spec after whitespace normalization (≥ 8 chars), so a
+  task with no testable acceptance criteria cannot start, and a paraphrase is rejected.
+- MCP prompt `readiness-brief` renders the task spec, plan requirements and recent decision
+  refs for the four sanity questions; `session-start` now includes the drill before the
+  status flip.
+- `overview` gained a `readiness` block (`inProgress`, `missing`, `stale`, samples, gate);
+  `task_get` and `harness://tasks/{id}` carry the drill and its blockers.
+- Migration 5: `readiness_checks` (cascading on task delete); `harness_export` /
+  `harness_import` carry it, so the dump schema version is 5.
+
+### Fixed
+
+- `harness_import` now validates readiness rows before committing: revision must be a
+  positive integer (also CHECK-constrained), `spec_hash` must be a sha256, and the list
+  columns must be JSON string arrays. Forged or corrupt drills cannot enter the store and
+  brick `overview`/`task_get` with a raw `SyntaxError`.
+- The start gate re-validates the stored drill against the current spec on read (hash and
+  the verbatim acceptance quote), so an imported row cannot start a task whose acceptance
+  never quoted the spec.
+- Revision allocation is transactional and unique-retried, so two writers on one database
+  cannot surface a raw `UNIQUE constraint failed` error.
+- `task_delete` refuses to delete a task cited by another readiness drill's `serves`
+  unless `force` is passed, so drills cannot silently cite a task that no longer exists.
+
 ## [0.3.0] - 2026-11-26
 
 ### Added

@@ -7,7 +7,8 @@ description: >
   probes, produce a plan and a session-ready task breakdown with dependencies, and keep
   cross-session progress tracking. Everything persists through the project-memory MCP
   server (plan sections, task board with dependency graph, decisions log, handoff block,
-  session log, a knowledge base of facts linked into a project graph, and a mandatory
+  session log, a knowledge base of facts linked into a project graph, a mandatory
+  pre-work readiness drill, and a mandatory
   adversarial code-review gate at task completion) — the skill is the method, the MCP
   server is the state; together they make any repo AI-session-ready. Use when starting a
   new project/feature, when the user asks for a plan, roadmap, or decomposition into AI
@@ -103,6 +104,9 @@ deadline backwards; every quality practice must name the phase that pays for it.
 - Record the global rules once as decisions: stack pins, per-task gates ("lint /
   typecheck / test / build green + review closed + docs updated before ending"), secrets
   never committed, centralized strings, no stray comments.
+- Every task spec must carry testable acceptance criteria: the readiness drill quotes them
+  verbatim and refuses to start the task otherwise, so a vague AC is caught at
+  decomposition time, not at review time.
 - Wire the sequence with `task_set_deps`. Sessions run strictly sequentially by default
   (one writer of the store); mark genuinely parallelizable pairs only if coordination is
   defined.
@@ -131,6 +135,40 @@ Get one **fresh-context review** first: a reviewer spawned with **no conversatio
 4. **Gate**: no implementation session starts while a blocker is unresolved or unwaived
    (a waiver is itself a decision). Re-run the gate after any Phase-5 pass that
    materially changed the plan.
+
+## Readiness drill — mandatory before task start (entry gate)
+
+Starting is a state transition, not a decision made in chat. Before you flip a task to
+`in-progress`, record the drill with `readiness_set` (or render the `readiness-brief`
+prompt). It is the entry-side sibling of the red-team gate: same evidence discipline, one
+phase earlier. Four questions, four evidence fields:
+
+| Question | Field | What passes |
+| --- | --- | --- |
+| What are we doing? | `goal` | One line in your own words, phrased so it could be proven wrong |
+| Is that ok? | `acceptance` | A **verbatim quote from the task spec** (whitespace-insensitive, ≥ 8 chars) |
+| Is that what we have to do? | `serves`, `outOfScope` | Existing R/D/F/T refs, plus explicit non-goals for this task |
+| Is this the way we do it? | `commands` | The exact commands that will prove it (the same names `review_check` records) |
+
+Rules:
+
+1. **No spec, no start.** The acceptance quote must be found in the task spec. An empty
+   spec or a paraphrase is `invalid` — fix the task spec first. This is how Definition of
+   Ready becomes mechanical instead of aspirational.
+2. **Refs must exist.** `serves` cites `R<n>` plan requirements, `D<n>` decisions, `F<n>`
+   facts and `T<n>` tasks; unknown D/F/T refs are `not-found`.
+3. **Freeze the negative scope.** `outOfScope` must have at least one entry (`["none"]` is
+   allowed only when nothing is excluded); it is the scope-creep guard.
+4. **A changed spec invalidates the drill.** Revisions are append-only and each carries a
+   spec hash; edit the task and `readiness_get` reports `readiness-stale`.
+5. **Policy, not ceremony.** `HARNESS_READINESS_GATE=warn` (default) allows the transition
+   but `overview` counts missing/stale drills per in-progress task; `enforce` refuses
+   `task_update(in-progress)` (including re-asserting it) and `task_create(in-progress)`. A
+   spec edit is allowed, marks the drill stale, and the next in-progress write is refused
+   until it is re-recorded; `off` disables the check.
+6. **Someone else reads it.** You write the drill; the exit-gate reviewer compares the
+   brief-back with the diff, and a mismatch is a finding. A drill only you ever read is a
+   self-quiz — the store artifact and the independent reader are what make it evidence.
 
 ## Red-team gate — mandatory code review before task completion
 
@@ -201,6 +239,8 @@ is an **input, never the tracker**:
    `task_next` names the work or tells you it's blocked
    and waiting on what. Then `fact_search` (and `fact_neighbourhood` on the component
    you are about to touch) — the answer to your next question may already be recorded.
+   Run the readiness drill (`readiness_get` → `readiness_set`) for the named task before
+   flipping it to `in-progress` — see the entry gate above.
 2. **During**: flip task status at every state change (`task_update`); record durable
    knowledge the moment it is discovered — binding rules/choices via `decision_append`,
    observations/gotchas/API behaviors via `fact_add` **with links** to the task and the
@@ -323,6 +363,10 @@ it is part of the definition of done, not an afterthought.
   delegate it; the knowledge graph here links knowledge to entities, it is not a code index.
 - Reviewing your own plan in the same conversation that wrote it — without fresh eyes the
   review is ceremony; run the goldfish gate with no conversation history.
+- Starting a task without a readiness drill, or writing one whose `acceptance` is a
+  paraphrase of the spec — the quote check exists to make the paraphrase fail.
+- Treating the readiness drill as a private self-quiz; the artifact is read by the exit
+  reviewer and counted in `overview`, so it is evidence, not a mood check.
 - Marking a task done without a closed review, or letting a confirmed/plausible blocker
   disappear without a fix or a recorded waiver decision.
 - Fixing refuted findings, trusting one reviewer pass, or closing a review after fixes

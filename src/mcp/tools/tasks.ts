@@ -63,13 +63,17 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
     {
       title: 'Get task',
       description:
-        'Fetch a single task: the full record including its long-form spec (goal/scope/acceptance criteria as markdown) plus both dependency directions (`dependsOn`, `dependents`).',
+        'Fetch a single task: the full record including its long-form spec (goal/scope/acceptance criteria as markdown) plus both dependency directions (`dependsOn`, `dependents`). Also carries the compact `review` summary and the `readiness` drill with its start-gate blockers.',
       inputSchema: { id: idSchema },
       annotations: { readOnlyHint: true },
     },
     guard((args: { id: string }) => {
       const detail = store.tasks.detail(args.id)
-      return asToolResult({ ...detail, review: store.reviews.summaryForTask(args.id) })
+      return asToolResult({
+        ...detail,
+        review: store.reviews.summaryForTask(args.id),
+        readiness: store.readiness.assess(args.id),
+      })
     }),
   )
 
@@ -101,6 +105,12 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
             'new tasks cannot be created as done under the review gate; create it as todo or in-progress, run the review, then complete it',
           )
         }
+        if (args.status === 'in-progress' && store.readinessGate === 'enforce') {
+          throw new HarnessError(
+            'readiness-required',
+            'new tasks cannot be created as in-progress under the readiness gate; create it as todo, record the drill with readiness_set, then start it',
+          )
+        }
         return asToolResult(store.tasks.create(args))
       },
     ),
@@ -111,7 +121,7 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
     {
       title: 'Update task',
       description:
-        'Update a task partially. Status transitions are free: todo → in-progress → done, anything → blocked (then `blockedReason` is required and cleared automatically when leaving blocked); done/cancelled can be reopened (reopening a done task invalidates its review and forces a new round). updated_at is stamped for you. Under the review gate, `done` also requires the reviewed `headSha` (and `diffHash` when the review recorded one). Flip status here at every state change during the session, then finish with session_log_add and handoff_set before ending.',
+        'Update a task partially. Status transitions are free: todo → in-progress → done, anything → blocked (then `blockedReason` is required and cleared automatically when leaving blocked); done/cancelled can be reopened (reopening a done task invalidates its review and forces a new round). updated_at is stamped for you. Under the readiness gate, setting or re-asserting in-progress requires a valid readiness drill (`readiness_set`) for the current spec; a spec edit marks the drill stale, so the next in-progress write is refused until it is re-recorded. Under the review gate, `done` also requires the reviewed `headSha` (and `diffHash` when the review recorded one). Flip status here at every state change during the session, then finish with session_log_add and handoff_set before ending.',
       inputSchema: {
         id: idSchema,
         title: titleSchema.optional(),
@@ -134,6 +144,9 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
       }) => {
         const { id, headSha, diffHash, ...patch } = args
         const existing = store.tasks.get(id)
+        if (patch.status === 'in-progress') {
+          store.readiness.assertCanStart(id, patch.spec)
+        }
         if (patch.status === 'done' && existing.status !== 'done') {
           store.reviews.assertCanComplete(id, headSha, diffHash)
         }
@@ -156,12 +169,23 @@ export function registerTaskTools(server: McpServer, store: HarnessStore): void 
     {
       title: 'Delete task',
       description:
-        'Delete a task permanently (history entries are separate and untouched). Refuses while other tasks still depend on it unless `force` is given, which silently drops the stale edges of the dependents — document that plan change with decision_append.',
+        'Delete a task permanently (history entries are separate and untouched). Refuses while other tasks still depend on it, or while another readiness drill cites it in `serves`, unless `force` is given; forcing silently drops the stale dependency edges — document that plan change with decision_append.',
       inputSchema: { id: idSchema, force: z.boolean().optional() },
     },
-    guard((args: { id: string; force?: boolean }) =>
-      asToolResult(store.tasks.delete(args.id, args.force ?? false)),
-    ),
+    guard((args: { id: string; force?: boolean }) => {
+      const force = args.force ?? false
+      store.tasks.get(args.id)
+      if (!force) {
+        const citedBy = store.readiness.servedBy(args.id)
+        if (citedBy.length > 0) {
+          throw new HarnessError(
+            'blocked-by-dependents',
+            `task "${args.id}" is cited by the readiness drill(s) of ${citedBy.join(', ')} — re-drill those tasks first, or pass force: true`,
+          )
+        }
+      }
+      return asToolResult(store.tasks.delete(args.id, force))
+    }),
   )
 
   server.registerTool(

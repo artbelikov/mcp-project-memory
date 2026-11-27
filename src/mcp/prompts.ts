@@ -78,6 +78,24 @@ export function registerHarnessPrompts(server: McpServer, store: HarnessStore): 
   )
 
   server.registerPrompt(
+    'readiness-brief',
+    {
+      title: 'Pre-work readiness drill',
+      description:
+        'The brief-back before starting a task: the task spec, its requirements and decisions, and the four sanity questions (what are we doing, is that ok, is it what we have to do, is this how we do it) with the evidence each readiness_set field must carry.',
+      argsSchema: { taskId: z.string() },
+    },
+    (args: { taskId: string }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: { type: 'text', text: readinessBriefText(store, args.taskId) },
+        },
+      ],
+    }),
+  )
+
+  server.registerPrompt(
     'code-review',
     {
       title: 'Fresh-context code review',
@@ -183,8 +201,9 @@ function sessionStartText(store: HarnessStore, focus: string | undefined): strin
 3. Call task_next — start the task it names, or stop and report what you are blocked on. Do not pick your own work.
 4. Call fact_search (and fact_neighbourhood on the component you will touch) — the answer to your next question may already be recorded. The knowledge base holds ${counts} fact(s).
 5. Call fact_health if the dashboard shows orphans, duplicates or stale facts; clean them as you go.
-6. Flip task status to in-progress the moment you start, and keep plan_put honest as you learn.
-7. Before marking any task done, close its adversarial review gate: run the project checks, start review_start, complete the hunt/refute/fix/re-review rounds, then task_update with the reviewed headSha. The gate refuses done without a verified review.${focusLine}
+6. Before flipping the task to in-progress, run the readiness drill: readiness_get, then readiness_set with the goal restated in your own words, the acceptance criteria quoted verbatim from the task spec, the R/D/F/T refs it serves, the explicit out-of-scope list and the exact commands that will prove it. Run the readiness-brief prompt if you need the template. Under HARNESS_READINESS_GATE=enforce the status flip refuses without a valid drill.
+7. Flip task status to in-progress the moment you start, and keep plan_put honest as you learn.
+8. Before marking any task done, close its adversarial review gate: run the project checks, start review_start, complete the hunt/refute/fix/re-review rounds, then task_update with the reviewed headSha. The gate refuses done without a verified review.${focusLine}
 
 Rules: append-only state — record decisions with decision_append, observations with fact_add (linked), never rewrite history; one condensed line in session_log_add and fresh handoff_set sections when you end.`
 }
@@ -272,6 +291,63 @@ For each fact in scope:
 Also compare the verified-facts plan section with current behavior: drifted entries are fixed with plan_put, and every changed behavior becomes a fact.
 
 Finish with one session_log_add line (confirmed / superseded counts) and fact_health if new problems surfaced.`
+}
+
+function readinessBriefText(store: HarnessStore, taskId: string): string {
+  let task: ReturnType<HarnessStore['tasks']['get']>
+  try {
+    task = store.tasks.get(taskId)
+  } catch {
+    return `Task "${taskId}" does not exist. Call task_list and use a real task id.`
+  }
+  const assessment = store.readiness.assess(taskId)
+  const spec = task.spec.trim().length === 0 ? '(empty)' : task.spec.trim()
+  const requirements = planSectionText(store, 'requirements')
+  const decisions = store.decisions.list({ limit: 10 })
+  const decisionLines =
+    decisions.length === 0
+      ? '- none recorded yet'
+      : decisions.map((decision) => `- ${decision.ref} — ${decision.title}`).join('\n')
+  const current =
+    assessment.record === null
+      ? 'No drill recorded. This task is not ready to start.'
+      : `Latest drill: revision ${assessment.record.revision}, recorded ${assessment.record.createdAt}. ${
+          assessment.canStart
+            ? 'It matches the current spec.'
+            : assessment.blockers.map((blocker) => blocker.message).join(' ')
+        }`
+  return `Record the pre-work readiness drill for task ${task.id} — ${task.title} (${task.status}) before writing any code. This is a brief-back, not a status update: every answer carries evidence or a ref, never confidence.
+
+${current}
+
+Task spec — the source of truth for acceptance:
+${spec}
+
+Plan requirements section:
+${requirements}
+
+Recent decisions (cite their D-refs in serves):
+${decisionLines}
+
+Answer the four sanity questions, then persist them with readiness_set:
+
+1. What are we doing? -> goal: restate the task in one line, in your own words, in a form that could be proven wrong.
+2. Is that ok? -> acceptance: quote the task spec verbatim (whitespace-insensitive, at least 8 characters). If the spec has no testable acceptance criteria, stop and fix the task spec first — the drill refuses to pass on an empty or paraphrased quote.
+3. Is that what we have to do? -> serves: the R<n> plan requirement, D<n> decision, F<n> fact and T<n> task refs this task implements (they must exist); outOfScope: the explicit non-goals for this task, so scope cannot creep silently.
+4. Is this the way we do it? -> commands: the exact commands that will prove the work (for example pnpm lint, pnpm typecheck, pnpm test). These become the commands you record with review_check at the exit gate.
+
+Call readiness_set({ taskId: "${task.id}", goal, acceptance, serves, outOfScope, commands }).
+
+Rules: each call appends a revision; editing the task spec after the drill makes it stale (readiness-stale) and task_update(in-progress) refuses under HARNESS_READINESS_GATE=enforce. The exit-gate reviewer compares this brief-back with the actual diff — a drill that claims one thing while the diff does another is a review finding, not a formality.`
+}
+
+function planSectionText(store: HarnessStore, id: string): string {
+  try {
+    const section = store.plan.get(id)
+    return section.content.trim().length === 0 ? '(empty)' : section.content.trim()
+  } catch {
+    return `(no "${id}" section in the plan yet)`
+  }
 }
 
 function codeReviewText(store: HarnessStore, taskId: string, lens: string | undefined): string {

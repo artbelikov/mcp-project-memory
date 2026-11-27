@@ -12,6 +12,8 @@ export type HarnessErrorCode =
   | 'review-lens-missing'
   | 'review-checks'
   | 'review-unrefuted'
+  | 'readiness-required'
+  | 'readiness-stale'
 
 export class HarnessError extends Error {
   constructor(

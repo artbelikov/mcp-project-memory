@@ -1,6 +1,9 @@
 import path from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { resolveConfig } from '../src/config.js'
+import { migrate } from '../src/db/migrations.js'
+import { createHarnessStore } from '../src/store.js'
 import {
   compareNatural,
   matchesAll,
@@ -38,6 +41,25 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ HARNESS_REVIEW_GATE: 'sideways' }, CWD)).toThrow(
       /HARNESS_REVIEW_GATE/,
     )
+  })
+
+  it('defaults the readiness gate to warn and honors off/enforce', () => {
+    expect(resolveConfig({}, CWD).readinessGate).toBe('warn')
+    expect(resolveConfig({ HARNESS_READINESS_GATE: 'enforce' }, CWD).readinessGate).toBe('enforce')
+    expect(resolveConfig({ HARNESS_READINESS_GATE: 'OFF' }, CWD).readinessGate).toBe('off')
+    expect(() => resolveConfig({ HARNESS_READINESS_GATE: 'sideways' }, CWD)).toThrow(
+      /HARNESS_READINESS_GATE/,
+    )
+  })
+
+  it('defaults createHarnessStore to the warn readiness gate', () => {
+    const db = new DatabaseSync(':memory:')
+    db.exec('PRAGMA foreign_keys = ON')
+    migrate(db)
+    const store = createHarnessStore(db)
+    expect(store.readinessGate).toBe('warn')
+    expect(store.reviewGate).toBe('enforce')
+    db.close()
   })
 })
 

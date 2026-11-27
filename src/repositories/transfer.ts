@@ -3,12 +3,14 @@ import { isUniqueViolation, withTransaction } from '../db/database.js'
 import { MIGRATIONS } from '../db/migrations.js'
 import { HarnessError } from '../errors.js'
 import { nowIso } from '../util.js'
+import { validateReadinessRows } from './readiness.js'
 
 export const DUMP_FORMAT = 'mcp-project-memory'
 
 export const DUMP_TABLES = [
   'tasks',
   'task_deps',
+  'readiness_checks',
   'decisions',
   'session_log',
   'handoff_sections',
@@ -48,6 +50,7 @@ const DELETE_ORDER: readonly DumpTable[] = [
   'review_checks',
   'review_findings',
   'reviews',
+  'readiness_checks',
   'links',
   'fact_confirmations',
   'facts',
@@ -63,6 +66,7 @@ const DELETE_ORDER: readonly DumpTable[] = [
 const INSERT_ORDER: readonly DumpTable[] = [
   'tasks',
   'task_deps',
+  'readiness_checks',
   'decisions',
   'session_log',
   'handoff_sections',
@@ -94,6 +98,7 @@ export function exportHarness(db: DatabaseSync): HarnessDump {
     exportedAt: nowIso(),
     tasks: rows('SELECT * FROM tasks ORDER BY id'),
     task_deps: rows('SELECT * FROM task_deps ORDER BY task_id, depends_on'),
+    readiness_checks: rows('SELECT * FROM readiness_checks ORDER BY task_id, revision'),
     decisions: rows('SELECT * FROM decisions ORDER BY id'),
     session_log: rows('SELECT * FROM session_log ORDER BY id'),
     handoff_sections: rows('SELECT * FROM handoff_sections ORDER BY position'),
@@ -153,6 +158,7 @@ export function importHarness(
       inserted[table] = ins
       skipped[table] = skip
     }
+    validateReadinessRows(db, dump.readiness_checks)
     return { mode, inserted, skipped }
   })
 }

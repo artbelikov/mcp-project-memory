@@ -53,6 +53,7 @@ export function registerHarnessResources(server: McpServer, store: HarnessStore)
         return asResource(uri.toString(), 'application/json', {
           ...store.tasks.detail(id),
           review: store.reviews.summaryForTask(id),
+          readiness: store.readiness.assess(id),
         })
       } catch (error) {
         throw wrapError(error)

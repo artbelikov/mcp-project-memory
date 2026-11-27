@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/sdk/types.js'
-import type { ReviewGateMode } from '../src/config.js'
+import type { GateMode, ReviewGateMode } from '../src/config.js'
 import { closeDatabase, openDatabase } from '../src/db/database.js'
 import { buildHarnessServer } from '../src/mcp/server.js'
 import { createHarnessStore, type HarnessStore } from '../src/store.js'
@@ -23,11 +23,14 @@ export type TestHarness = {
 }
 
 export async function createTestHarness(
-  options: { reviewGate?: ReviewGateMode } = {},
+  options: { reviewGate?: ReviewGateMode; readinessGate?: GateMode } = {},
 ): Promise<TestHarness> {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-project-memory-'))
   const db: DatabaseSync = openDatabase(path.join(dataDir, 'harness.db'))
-  const store = createHarnessStore(db, { reviewGate: options.reviewGate ?? 'off' })
+  const store = createHarnessStore(db, {
+    reviewGate: options.reviewGate ?? 'off',
+    readinessGate: options.readinessGate ?? 'off',
+  })
   const server = buildHarnessServer(store)
   const client = new Client({ name: 'test-client', version: '0.0.0' })
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
@@ -37,6 +40,7 @@ export async function createTestHarness(
   const call: TestHarness['call'] = (name, args = {}) =>
     client.callTool({ name, arguments: args }) as unknown as Promise<CallToolResult>
 
+  let disposed = false
   return {
     db,
     store,
@@ -61,6 +65,7 @@ export async function createTestHarness(
     readResource: async (uri) =>
       client.readResource({ uri }) as unknown as Promise<ReadResourceResult>,
     dispose: async () => {
+      if (disposed) return
       try {
         await client.close()
       } finally {
@@ -68,6 +73,7 @@ export async function createTestHarness(
       }
       closeDatabase(db)
       await rm(dataDir, { recursive: true, force: true })
+      disposed = true
     },
   }
 }

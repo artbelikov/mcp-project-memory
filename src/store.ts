@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
-import type { ReviewGateMode } from './config.js'
+import type { GateMode, ReadinessGateMode, ReviewGateMode } from './config.js'
 import { type Decision, DecisionsRepository } from './repositories/decisions.js'
 import {
   type FactHealthCounts,
@@ -10,6 +10,7 @@ import {
 import { GraphRepository } from './repositories/graph.js'
 import { type Handoff, HandoffRepository } from './repositories/handoff.js'
 import { PlanRepository, type PlanSectionSummary } from './repositories/plan.js'
+import { type ReadinessHealth, ReadinessRepository } from './repositories/readiness.js'
 import { type ReviewOverview, ReviewsRepository } from './repositories/reviews.js'
 import { type SessionLogEntry, SessionLogRepository } from './repositories/session-log.js'
 import {
@@ -32,14 +33,17 @@ export type HarnessStore = {
   graph: GraphRepository
   reviews: ReviewsRepository
   reviewGate: ReviewGateMode
+  readiness: ReadinessRepository
+  readinessGate: ReadinessGateMode
 }
 
 export function createHarnessStore(
   db: DatabaseSync,
-  options: { reviewGate?: ReviewGateMode } = {},
+  options: { reviewGate?: ReviewGateMode; readinessGate?: ReadinessGateMode } = {},
 ): HarnessStore {
   const graph = new GraphRepository(db)
   const reviewGate = options.reviewGate ?? 'enforce'
+  const readinessGate = options.readinessGate ?? 'warn'
   return {
     db,
     tasks: new TasksRepository(db),
@@ -51,6 +55,8 @@ export function createHarnessStore(
     facts: new FactsRepository(db, graph),
     reviews: new ReviewsRepository(db, reviewGate),
     reviewGate,
+    readiness: new ReadinessRepository(db, readinessGate),
+    readinessGate,
   }
 }
 
@@ -68,6 +74,7 @@ export type Overview = {
   plan: { sections: number; updatedAt: string | null }
   facts: FactSummary & { health: FactHealthCounts }
   reviews: ReviewOverview
+  readiness: ReadinessHealth & { gate: GateMode }
 }
 
 export function buildOverview(store: HarnessStore): Overview {
@@ -101,6 +108,7 @@ export function buildOverview(store: HarnessStore): Overview {
     plan: { sections: sections.length, updatedAt: planUpdatedAt },
     facts: { ...store.facts.summary(), health: store.facts.health().counts },
     reviews: store.reviews.summary(),
+    readiness: { ...store.readiness.health(), gate: store.readinessGate },
   }
 }
 

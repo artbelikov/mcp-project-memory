@@ -190,6 +190,77 @@
       "annotations": null
     },
     {
+      "name": "readiness_set",
+      "title": "Record the pre-work readiness drill",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task id: a T-number (T0-T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
+          },
+          "goal": {
+            "type": "string",
+            "description": "One-line restatement of the task goal in your own words; max 500 chars"
+          },
+          "acceptance": {
+            "type": "string",
+            "description": "Verbatim quote of the task spec's acceptance criteria (whitespace-insensitive; at least 8 chars); max 4000 chars"
+          },
+          "serves": {
+            "description": "Refs this task implements: R<n> plan requirement, D<n> decision, F<n> fact, T<n> task; max 20 entries of 120 chars",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outOfScope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Explicit non-goals for this task (use [\"none\"] only if genuinely nothing is excluded); max 20 entries of 500 chars"
+          },
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact commands that will prove the work (e.g. \"pnpm test\", \"pnpm lint\"); max 20 entries of 500 chars"
+          }
+        },
+        "required": [
+          "taskId",
+          "goal",
+          "acceptance",
+          "outOfScope",
+          "commands"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": null
+    },
+    {
+      "name": "readiness_get",
+      "title": "Read the readiness drill",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task id: a T-number (T0-T9999) or a lowercase slug [a-z][a-z0-9-]; max 48 characters"
+          }
+        },
+        "required": [
+          "taskId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "session_log_add",
       "title": "Append session log line",
       "inputSchema": {
@@ -1394,6 +1465,16 @@
                   "additionalProperties": {}
                 }
               },
+              "readiness_checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
               "decisions": {
                 "type": "array",
                 "items": {
@@ -1530,6 +1611,7 @@
               "schemaVersion",
               "tasks",
               "task_deps",
+              "readiness_checks",
               "decisions",
               "session_log",
               "handoff_sections",
@@ -1647,6 +1729,16 @@
         {
           "name": "focus",
           "required": false,
+          "description": null
+        }
+      ]
+    },
+    {
+      "name": "readiness-brief",
+      "arguments": [
+        {
+          "name": "taskId",
+          "required": true,
           "description": null
         }
       ]

@@ -258,7 +258,33 @@ const REVIEWS: Migration = {
   ],
 }
 
-export const MIGRATIONS: readonly Migration[] = [BASELINE, KNOWLEDGE, CONFIRMATIONS, REVIEWS]
+const READINESS: Migration = {
+  id: 5,
+  statements: [
+    `CREATE TABLE readiness_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL CHECK (typeof(revision) = 'integer' AND revision > 0),
+      goal TEXT NOT NULL,
+      acceptance TEXT NOT NULL,
+      serves TEXT NOT NULL DEFAULT '[]',
+      out_of_scope TEXT NOT NULL DEFAULT '[]',
+      commands TEXT NOT NULL DEFAULT '[]',
+      spec_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (task_id, revision)
+    )`,
+    'CREATE INDEX idx_readiness_task ON readiness_checks (task_id, revision DESC)',
+  ],
+}
+
+export const MIGRATIONS: readonly Migration[] = [
+  BASELINE,
+  KNOWLEDGE,
+  CONFIRMATIONS,
+  REVIEWS,
+  READINESS,
+]
 
 export function migrate(db: DatabaseSync): void {
   db.exec(
